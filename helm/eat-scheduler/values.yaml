@@ -1,0 +1,65 @@
+image:
+  repository: eat-scheduler
+  tag: latest
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 3000
+
+# DATABASE_URL : SQLite par défaut (avec PVC) ou Postgres via secret
+database:
+  # mode: "sqlite" → utilise un PVC pour /data
+  # mode: "postgres" → DATABASE_URL fournie via existingSecret
+  mode: sqlite
+
+  sqlite:
+    persistence:
+      enabled: true
+      size: 1Gi
+      storageClass: ""
+      accessMode: ReadWriteOnce
+
+  postgres:
+    # Référence un secret existant contenant DATABASE_URL
+    existingSecret: ""
+    secretKey: DATABASE_URL
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: eat.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+podSecurityContext:
+  fsGroup: 1001
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  readOnlyRootFilesystem: false
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+extraEnv: []

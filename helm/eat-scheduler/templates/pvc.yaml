@@ -1,0 +1,17 @@
+{{- if and (eq .Values.database.mode "sqlite") .Values.database.sqlite.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "eat-scheduler.fullname" . }}-data
+  labels:
+    {{- include "eat-scheduler.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.database.sqlite.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.database.sqlite.persistence.size }}
+  {{- with .Values.database.sqlite.persistence.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+{{- end }}

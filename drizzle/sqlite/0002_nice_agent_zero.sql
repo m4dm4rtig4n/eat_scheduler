@@ -1,0 +1,1 @@
+ALTER TABLE `recipes` ADD `season` text DEFAULT 'all' NOT NULL;

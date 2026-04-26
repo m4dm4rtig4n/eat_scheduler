@@ -1,36 +1,98 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Eat Scheduler
 
-## Getting Started
+Planificateur de repas hebdomadaires (PWA mobile-first) avec liste de courses générée et import de recettes depuis URL.
 
-First, run the development server:
+## Stack
+
+- **Next.js 16** (App Router) + React 19
+- **Drizzle ORM** avec switch SQLite/Postgres via `DATABASE_URL`
+- **Tailwind CSS v4**
+- **Zod** pour la validation
+- **mise** pour la gestion des outils
+
+## Démarrage
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+mise install            # installe Node 24 + pnpm 10
+pnpm install
+pnpm db:generate        # génère les migrations Drizzle
+pnpm db:migrate         # applique les migrations
+pnpm dev                # serveur dev sur http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Configuration DB
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+`.env.local` :
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+# SQLite (par défaut, dev)
+DATABASE_URL="file:./data/eat.db"
 
-## Learn More
+# PostgreSQL (prod)
+DATABASE_URL="postgresql://user:password@host:5432/eat_scheduler"
+```
 
-To learn more about Next.js, take a look at the following resources:
+Le dialecte est détecté automatiquement depuis l'URI. Les migrations sont stockées dans `drizzle/sqlite/` et `drizzle/postgres/`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Scripts
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Commande | Description |
+|---|---|
+| `pnpm dev` | Serveur de développement |
+| `pnpm build` | Build de production |
+| `pnpm start` | Démarre le build de production |
+| `pnpm db:generate` | Génère les migrations depuis le schema |
+| `pnpm db:migrate` | Applique les migrations |
+| `pnpm db:studio` | Ouvre Drizzle Studio (UI de la DB) |
 
-## Deploy on Vercel
+## Fonctionnalités
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- **Planning hebdomadaire** : grille 7 jours × midi/soir, ajustement des portions (+/-)
+- **Recettes** : CRUD avec ingrédients dynamiques
+- **Import URL** : extraction automatique depuis schema.org/Recipe (Marmiton, 750g, etc.)
+- **Liste de courses** : agrégation par ingrédient, cases à cocher persistantes
+- **PWA** : installable sur mobile, cache offline pour les pages
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Déploiement
+
+### Docker
+
+```bash
+docker compose up -d
+```
+
+### Kubernetes (Helm)
+
+Le chart `helm/eat-scheduler` supporte SQLite (avec PVC) ou Postgres (via secret).
+
+```bash
+helm template helm/eat-scheduler -f helm/eat-scheduler/example/values.yaml
+helm install eat helm/eat-scheduler -f helm/eat-scheduler/example/values.yaml
+```
+
+## Structure
+
+```
+src/
+├── app/
+│   ├── page.tsx                 # Planning de la semaine
+│   ├── recipes/                 # Liste, création, édition
+│   ├── shopping/page.tsx        # Liste de courses
+│   └── api/                     # Route handlers
+├── components/
+│   ├── ui/                      # Boutons, inputs
+│   ├── week-planner.tsx
+│   ├── recipe-form.tsx
+│   ├── shopping-view.tsx
+│   └── bottom-nav.tsx
+└── lib/
+    ├── db/
+    │   ├── index.ts             # Connexion (URI-based)
+    │   ├── schema-sqlite.ts
+    │   ├── schema-postgres.ts
+    │   ├── recipes.ts
+    │   └── meals.ts
+    ├── import/parse-recipe.ts   # Parser JSON-LD
+    ├── shopping-list.ts         # Agrégation
+    └── validators.ts            # Zod schemas
+```

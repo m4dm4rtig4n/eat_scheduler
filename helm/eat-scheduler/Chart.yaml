@@ -1,0 +1,6 @@
+apiVersion: v2
+name: eat-scheduler
+description: Planificateur de repas hebdomadaires avec liste de courses
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

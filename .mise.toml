@@ -1,0 +1,7 @@
+[tools]
+node = "24"
+pnpm = "10"
+
+[env]
+# Charge automatiquement .env.local quand on entre dans le dossier
+_.file = ".env.local"

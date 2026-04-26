@@ -1,0 +1,26 @@
+services:
+  app:
+    build: .
+    image: eat-scheduler:latest
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: file:/data/eat.db
+    volumes:
+      - eat-data:/data
+    restart: unless-stopped
+
+  # Décommenter pour utiliser Postgres au lieu de SQLite
+  # postgres:
+  #   image: postgres:16-alpine
+  #   environment:
+  #     POSTGRES_USER: eat
+  #     POSTGRES_PASSWORD: changeme
+  #     POSTGRES_DB: eat_scheduler
+  #   volumes:
+  #     - eat-pg:/var/lib/postgresql/data
+  #   restart: unless-stopped
+
+volumes:
+  eat-data:
+  # eat-pg:

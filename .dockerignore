@@ -1,0 +1,11 @@
+node_modules
+.next
+.git
+.vscode
+.env*
+!.env.example
+data
+*.md
+docker-compose.yml
+README.md
+helm
