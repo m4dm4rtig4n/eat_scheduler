@@ -113,8 +113,8 @@ jobs:
           node-version: 24
           cache: pnpm
 
-      - name: Install commitlint
-        run: pnpm add -D -w @commitlint/cli @commitlint/config-conventional
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Validate PR commits
         run: pnpm exec commitlint --from "$BASE_SHA" --to "$HEAD_SHA" --verbose
