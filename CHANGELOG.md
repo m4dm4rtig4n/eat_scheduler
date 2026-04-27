@@ -1,3 +1,9 @@
+## [1.0.1](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.0.0...v1.0.1) (2026-04-27)
+
+### Bug Fixes
+
+* **db:** generate initial Postgres migration ([84aee16](https://github.com/m4dm4rtig4n/eat_scheduler/commit/84aee16924ca1aa789609e2a90e7eba9b1c12c0c))
+
 ## 1.0.0 (2026-04-27)
 
 ### Features
