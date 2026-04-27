@@ -1,62 +1,149 @@
 @import "tailwindcss";
 
 :root {
-  --background: #fafaf7;
-  --foreground: #1a1a1a;
-  --primary: #d97706;
-  --primary-foreground: #ffffff;
-  --muted: #f3f3ee;
-  --muted-foreground: #6b6b6b;
-  --border: #e5e5e0;
+  /* Bistrot moderne : crème chaude + orange brûlé + olive + dorure */
+  --background: #fbf7f1;
+  --background-tint: #f4ecdf;
+  --foreground: #1f1a14;
+  --foreground-soft: #423a2e;
+  --primary: #c2410c;
+  --primary-hover: #9a3412;
+  --primary-foreground: #fffaf3;
+  --primary-soft: #fde8d0;
+  --muted: #f0e8d9;
+  --muted-foreground: #78695a;
+  --border: #e7dcc7;
+  --border-strong: #d4c5a8;
   --card: #ffffff;
-  --accent: #ecfccb;
-  --accent-foreground: #365314;
+  --card-warm: #fffaf3;
+  --accent: #e9f2d6;
+  --accent-foreground: #3f5314;
+  --gold: #b45309;
+  --gold-soft: #fef3c7;
+  --danger: #b91c1c;
+  --danger-soft: #fee2e2;
+
+  --radius-sm: 0.5rem;
+  --radius: 0.875rem;
+  --radius-lg: 1.25rem;
+
+  --shadow-soft: 0 1px 2px rgba(60, 40, 20, 0.04),
+    0 2px 8px rgba(60, 40, 20, 0.05);
+  --shadow-lift: 0 2px 4px rgba(60, 40, 20, 0.06),
+    0 8px 24px rgba(60, 40, 20, 0.08);
+  --shadow-glow: 0 0 0 4px rgba(194, 65, 12, 0.12);
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-background-tint: var(--background-tint);
   --color-foreground: var(--foreground);
+  --color-foreground-soft: var(--foreground-soft);
   --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-card: var(--card);
+  --color-card-warm: var(--card-warm);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-gold: var(--gold);
+  --color-gold-soft: var(--gold-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+
+  --radius-sm: var(--radius-sm);
+  --radius: var(--radius);
+  --radius-lg: var(--radius-lg);
+
+  --shadow-soft: var(--shadow-soft);
+  --shadow-lift: var(--shadow-lift);
+  --shadow-glow: var(--shadow-glow);
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  --animate-fade-in: fade-in 0.25s ease-out;
+  --animate-slide-up: slide-up 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-pop: pop 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pop {
+  0% { transform: scale(0.94); }
+  60% { transform: scale(1.03); }
+  100% { transform: scale(1); }
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0f0f0e;
-    --foreground: #f5f5f0;
-    --primary: #f59e0b;
-    --primary-foreground: #1a1a1a;
-    --muted: #1f1f1d;
-    --muted-foreground: #a0a09a;
-    --border: #2a2a27;
-    --card: #1a1a18;
-    --accent: #365314;
-    --accent-foreground: #ecfccb;
+    --background: #14110d;
+    --background-tint: #1c1813;
+    --foreground: #f5ecdc;
+    --foreground-soft: #c9bfae;
+    --primary: #fb923c;
+    --primary-hover: #fdba74;
+    --primary-foreground: #1a120a;
+    --primary-soft: #3a1f0d;
+    --muted: #25201a;
+    --muted-foreground: #a39684;
+    --border: #2e2820;
+    --border-strong: #423a2e;
+    --card: #1d1812;
+    --card-warm: #221c14;
+    --accent: #2a3a14;
+    --accent-foreground: #d9e9b3;
+    --gold: #fbbf24;
+    --gold-soft: #3a2c0a;
+    --danger: #f87171;
+    --danger-soft: #3a1414;
+
+    --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.3),
+      0 2px 8px rgba(0, 0, 0, 0.25);
+    --shadow-lift: 0 2px 4px rgba(0, 0, 0, 0.4),
+      0 8px 24px rgba(0, 0, 0, 0.35);
+    --shadow-glow: 0 0 0 4px rgba(251, 146, 60, 0.18);
   }
 }
 
 body {
   background: var(--background);
+  background-image:
+    radial-gradient(at 12% 0%, rgba(253, 232, 208, 0.55) 0px, transparent 50%),
+    radial-gradient(at 92% 8%, rgba(233, 242, 214, 0.45) 0px, transparent 45%);
+  background-attachment: fixed;
   color: var(--foreground);
   font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior-y: contain;
 }
 
-/* Inputs et boutons : touch-friendly mobile */
+@media (prefers-color-scheme: dark) {
+  body {
+    background-image:
+      radial-gradient(at 12% 0%, rgba(58, 31, 13, 0.6) 0px, transparent 50%),
+      radial-gradient(at 92% 8%, rgba(42, 58, 20, 0.4) 0px, transparent 45%);
+  }
+}
+
 input,
 select,
 textarea,
 button {
-  font-size: 16px; /* évite le zoom iOS */
+  font-size: 16px;
 }
 
 @media (min-width: 768px) {
@@ -66,4 +153,17 @@ button {
   button {
     font-size: 14px;
   }
+}
+
+/* Scrollbar discrète */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
 }

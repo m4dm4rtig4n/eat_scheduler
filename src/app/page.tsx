@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { Settings } from "lucide-react";
 import { listRecipes } from "@/lib/db/recipes";
 import { listMealsBetween } from "@/lib/db/meals";
 import { addDays, formatDateISO, startOfWeek } from "@/lib/utils";
@@ -18,7 +20,19 @@ export default async function HomePage() {
 
   return (
     <>
-      <PageHeader title="Planning" />
+      <PageHeader
+        title="Planning"
+        action={
+          <Link
+            href="/settings"
+            className="size-9 inline-flex items-center justify-center rounded-lg text-muted-foreground hover:text-primary hover:bg-primary-soft/40 transition-colors"
+            aria-label="Réglages"
+            title="Réglages"
+          >
+            <Settings className="size-5" />
+          </Link>
+        }
+      />
       <WeekPlanner
         recipes={recipes}
         initialMeals={meals}

@@ -1,10 +1,11 @@
-import { DINERS, type Diner, type Preference } from "@/lib/diners";
+import type { Diner, Preference } from "@/lib/diners";
 import {
   getSeasonFromDate,
   isRecipeInSeason,
   type Season,
 } from "@/lib/seasons";
 import { getDayOfWeekFromIso, type DayOfWeek } from "@/lib/days";
+import { isRecipeAllowedAtSlot } from "@/lib/recipe-slots";
 import type { RecipeWithDetails } from "@/lib/db/recipes";
 import type { PlannedMealInput } from "@/lib/validators";
 import type { SlotFavorite } from "@/lib/db/slot-favorites";
@@ -60,9 +61,8 @@ function recipeScore(
   const ingredientCount = Math.max(1, recipe.ingredients.length);
   const ingredientBonus = ingredientCount <= 5 ? 1.5 : 5 / ingredientCount;
 
-  // Poids de base de la recette (1-5) * couverture des convives
-  const coverage = diners.length / Math.max(1, DINERS.length);
-  const baseWeight = recipe.weight * (1 + coverage);
+  // Poids de base de la recette (1-5). On retire la couverture car le diner pool est dynamique.
+  const baseWeight = recipe.weight * 2;
 
   // Pénalité si recently used
   const recencyPenalty = recentlyUsed.has(recipe.id) ? 0.2 : 1;
@@ -131,8 +131,8 @@ export function generateWeekPlan(
   ctx: GenerationContext,
   rng: () => number = Math.random
 ): GeneratedSlot[] {
-  const dinersToServe =
-    ctx.diners.length > 0 ? ctx.diners : ([...DINERS] as Diner[]);
+  const dinersToServe = ctx.diners;
+  if (dinersToServe.length === 0) return [];
 
   const usedThisWeek = new Set<number>();
   const slots: GeneratedSlot[] = [];
@@ -145,12 +145,20 @@ export function generateWeekPlan(
     usedThisWeek.add(m.recipeId);
   }
 
-  // Index favoris par (jour × créneau)
+  // Index favoris par (jour × créneau).
+  // - pinnedByKey : recettes épinglées, placées automatiquement sans passer par le scoring
+  // - favoritesByKey : recettes favorites non-pinned, qui reçoivent un boost ×3 au scoring
+  const pinnedByKey = new Map<string, number[]>();
   const favoritesByKey = new Map<string, Set<number>>();
   for (const fav of ctx.slotFavorites ?? []) {
     const k = `${fav.dayOfWeek}|${fav.mealType}`;
-    if (!favoritesByKey.has(k)) favoritesByKey.set(k, new Set());
-    favoritesByKey.get(k)!.add(fav.recipeId);
+    if (fav.pinned) {
+      if (!pinnedByKey.has(k)) pinnedByKey.set(k, []);
+      pinnedByKey.get(k)!.push(fav.recipeId);
+    } else {
+      if (!favoritesByKey.has(k)) favoritesByKey.set(k, new Set());
+      favoritesByKey.get(k)!.add(fav.recipeId);
+    }
   }
 
   // Construit la liste des (date, mealType) à traiter, en priorisant
@@ -163,7 +171,8 @@ export function generateWeekPlan(
       const slotKey = `${date}|${mealType}`;
       if ((existingByKey.get(slotKey) ?? []).length > 0) continue;
       const hasFavorites =
-        (favoritesByKey.get(`${dayOfWeek}|${mealType}`)?.size ?? 0) > 0;
+        (favoritesByKey.get(`${dayOfWeek}|${mealType}`)?.size ?? 0) > 0 ||
+        (pinnedByKey.get(`${dayOfWeek}|${mealType}`)?.length ?? 0) > 0;
       allSlots.push({ date, mealType, hasFavorites });
     }
   }
@@ -178,9 +187,40 @@ export function generateWeekPlan(
       ctx.seasonOverride ?? getSeasonFromDate(new Date(date));
     const dayOfWeek = getDayOfWeekFromIso(date);
 
-    // Pool de recettes éligibles pour ce jour selon la saison
-    const seasonalRecipes = ctx.recipes.filter((r) =>
-      isRecipeInSeason(r.season, slotSeason)
+    // Cas spécial : pinned. Placement direct, pas de scoring.
+    // Un pin gagne sur tout (saison, dislikes), c'est l'intention explicite.
+    const pinnedIds = pinnedByKey.get(`${dayOfWeek}|${mealType}`);
+    if (pinnedIds && pinnedIds.length > 0) {
+      const pinnedMeals: PlannedMealInput[] = [];
+      for (const id of pinnedIds) {
+        const recipe = ctx.recipes.find((r) => r.id === id);
+        if (!recipe) continue; // recette supprimée entre-temps
+        // Convives qui acceptent : on respecte les dislikes même pour les pinned
+        const accepted = dinersWhoAccept(recipe, dinersToServe);
+        if (accepted.length === 0) continue; // personne, on skip
+        pinnedMeals.push({
+          date,
+          mealType,
+          recipeId: recipe.id,
+          servingsMultiplier: 1,
+          diners: accepted,
+          notes: null,
+        });
+        usedThisWeek.add(recipe.id);
+      }
+      if (pinnedMeals.length > 0) {
+        slots.push({ date, mealType, meals: pinnedMeals });
+        continue; // slot fait, on passe au suivant
+      }
+    }
+
+    // Pool de recettes éligibles pour ce slot :
+    //  - saisonnement compatibles
+    //  - allowedSlots respectées (si la recette est restreinte, le slot doit être dedans)
+    const seasonalRecipes = ctx.recipes.filter(
+      (r) =>
+        isRecipeInSeason(r.season, slotSeason) &&
+        isRecipeAllowedAtSlot(r, dayOfWeek, mealType)
     );
 
     {
@@ -227,10 +267,13 @@ export function generateWeekPlan(
             })
             .filter((x): x is NonNullable<typeof x> => x !== null);
 
+          // Fallback ultime : on autorise hors-saison MAIS on respecte
+          // toujours les allowedSlots (contrainte hard, pas un soft prefer).
           const fallback =
             seasonalFallback.length > 0
               ? seasonalFallback
               : ctx.recipes
+                  .filter((r) => isRecipeAllowedAtSlot(r, dayOfWeek, mealType))
                   .map((recipe) => {
                     const accepted = dinersWhoAccept(recipe, remainingDiners);
                     if (accepted.length === 0) return null;

@@ -10,6 +10,12 @@ export type SlotFavorite = {
   dayOfWeek: DayOfWeek;
   mealType: MealType;
   recipeId: number;
+  pinned: boolean;
+};
+
+export type SlotFavoriteEntry = {
+  recipeId: number;
+  pinned: boolean;
 };
 
 /** Liste tous les favoris (pour affichage de la grille hebdo). */
@@ -19,14 +25,15 @@ export async function listAllFavorites(): Promise<SlotFavorite[]> {
     dayOfWeek: r.dayOfWeek as DayOfWeek,
     mealType: r.mealType as MealType,
     recipeId: r.recipeId,
+    pinned: Boolean(r.pinned),
   }));
 }
 
-/** Liste les recipeIds favoris pour un slot donné. */
+/** Liste les entrées favorites (id + pinned) pour un slot donné. */
 export async function listFavoritesForSlot(
   dayOfWeek: DayOfWeek,
   mealType: MealType
-): Promise<number[]> {
+): Promise<SlotFavoriteEntry[]> {
   const rows = await (db as any)
     .select()
     .from(slotFavorites)
@@ -36,14 +43,17 @@ export async function listFavoritesForSlot(
         eq(slotFavorites.mealType, mealType)
       )
     );
-  return rows.map((r: any) => r.recipeId);
+  return rows.map((r: any) => ({
+    recipeId: r.recipeId,
+    pinned: Boolean(r.pinned),
+  }));
 }
 
 /** Remplace tous les favoris d'un slot par la liste fournie. */
 export async function setFavoritesForSlot(
   dayOfWeek: DayOfWeek,
   mealType: MealType,
-  recipeIds: number[]
+  entries: SlotFavoriteEntry[]
 ): Promise<void> {
   await (db as any)
     .delete(slotFavorites)
@@ -53,11 +63,14 @@ export async function setFavoritesForSlot(
         eq(slotFavorites.mealType, mealType)
       )
     );
-  if (recipeIds.length > 0) {
-    await (db as any)
-      .insert(slotFavorites)
-      .values(
-        recipeIds.map((recipeId) => ({ dayOfWeek, mealType, recipeId }))
-      );
+  if (entries.length > 0) {
+    await (db as any).insert(slotFavorites).values(
+      entries.map((e) => ({
+        dayOfWeek,
+        mealType,
+        recipeId: e.recipeId,
+        pinned: e.pinned,
+      }))
+    );
   }
 }

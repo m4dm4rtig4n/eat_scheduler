@@ -2,25 +2,33 @@
 
 import { useState, useTransition, FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, X, Trash2, Download, Loader2, Star } from "lucide-react";
+import { Plus, X, Trash2, Download, Loader2, Star, ImageIcon, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea, Label } from "@/components/ui/input";
 import type { RecipeInput } from "@/lib/validators";
 import type { RecipeWithDetails } from "@/lib/db/recipes";
 import {
-  DINERS,
-  DINER_LABELS,
   PREFERENCE_EMOJI,
+  activeDinerKeys,
+  dinerLabel,
   type Diner,
   type Preference,
 } from "@/lib/diners";
+import { useDiners } from "@/components/diners-provider";
 import {
   SEASONS,
   SEASON_LABELS,
   SEASON_EMOJI,
   type Season,
 } from "@/lib/seasons";
+import {
+  DAYS_OF_WEEK,
+  DAY_LABELS_SHORT,
+  type DayOfWeek,
+} from "@/lib/days";
 import { cn } from "@/lib/utils";
+
+type SlotKey = `${DayOfWeek}|lunch` | `${DayOfWeek}|dinner`;
 
 type FormState = {
   name: string;
@@ -33,18 +41,19 @@ type FormState = {
   imageUrl: string;
   weight: number;
   season: Season;
+  allowedSlots: Set<SlotKey>;
   ingredients: Array<{ name: string; quantity: string }>;
   preferences: Record<Diner, Preference>;
 };
 
-function defaultPreferences(): Record<Diner, Preference> {
-  return DINERS.reduce(
+function defaultPreferences(diners: Diner[]): Record<Diner, Preference> {
+  return diners.reduce(
     (acc, d) => ({ ...acc, [d]: "like" as Preference }),
     {} as Record<Diner, Preference>
   );
 }
 
-function emptyState(): FormState {
+function emptyState(diners: Diner[]): FormState {
   return {
     name: "",
     description: "",
@@ -56,13 +65,14 @@ function emptyState(): FormState {
     imageUrl: "",
     weight: 3,
     season: "all",
+    allowedSlots: new Set(),
     ingredients: [{ name: "", quantity: "" }],
-    preferences: defaultPreferences(),
+    preferences: defaultPreferences(diners),
   };
 }
 
-function fromRecipe(r: RecipeWithDetails): FormState {
-  const prefs = defaultPreferences();
+function fromRecipe(r: RecipeWithDetails, diners: Diner[]): FormState {
+  const prefs = defaultPreferences(diners);
   for (const p of r.preferences) {
     prefs[p.diner] = p.preference;
   }
@@ -77,6 +87,11 @@ function fromRecipe(r: RecipeWithDetails): FormState {
     imageUrl: r.imageUrl ?? "",
     weight: r.weight,
     season: r.season,
+    allowedSlots: new Set(
+      r.allowedSlots.map(
+        (s) => `${s.dayOfWeek}|${s.mealType}` as SlotKey
+      )
+    ),
     ingredients:
       r.ingredients.length > 0
         ? r.ingredients.map(({ name, quantity }) => ({ name, quantity }))
@@ -85,7 +100,7 @@ function fromRecipe(r: RecipeWithDetails): FormState {
   };
 }
 
-function toRecipeInput(s: FormState): RecipeInput {
+function toRecipeInput(s: FormState, diners: Diner[]): RecipeInput {
   return {
     name: s.name.trim(),
     description: s.description.trim() || null,
@@ -104,10 +119,17 @@ function toRecipeInput(s: FormState): RecipeInput {
         quantity: i.quantity.trim(),
         position,
       })),
-    preferences: DINERS.map((d) => ({
+    preferences: diners.map((d) => ({
       diner: d,
-      preference: s.preferences[d],
+      preference: s.preferences[d] ?? "like",
     })),
+    allowedSlots: Array.from(s.allowedSlots).map((key) => {
+      const [day, meal] = key.split("|");
+      return {
+        dayOfWeek: parseInt(day, 10),
+        mealType: meal as "lunch" | "dinner",
+      };
+    }),
   };
 }
 
@@ -119,14 +141,54 @@ export function RecipeForm({
   recipeId?: number;
 }) {
   const router = useRouter();
+  const dinersConfig = useDiners();
+  const dinerKeys = activeDinerKeys(dinersConfig);
   const [state, setState] = useState<FormState>(
-    initial ? fromRecipe(initial) : emptyState()
+    initial ? fromRecipe(initial, dinerKeys) : emptyState(dinerKeys)
   );
   const [importUrl, setImportUrl] = useState("");
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [searchingImage, setSearchingImage] = useState(false);
+  const [imageSearchError, setImageSearchError] = useState<string | null>(null);
+  const [imageCandidates, setImageCandidates] = useState<string[]>([]);
   const [isPending, startTransition] = useTransition();
+
+  const handleSearchImage = async () => {
+    const query = state.name.trim();
+    if (!query) {
+      setImageSearchError("Renseigne d'abord le nom de la recette");
+      return;
+    }
+    setSearchingImage(true);
+    setImageSearchError(null);
+    try {
+      const res = await fetch(
+        `/api/images/search?q=${encodeURIComponent(query)}&count=6`
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Échec de la recherche");
+      if (!data.urls || data.urls.length === 0) {
+        setImageCandidates([]);
+        setImageSearchError("Aucune image trouvée pour ce nom");
+        return;
+      }
+      setImageCandidates(data.urls);
+    } catch (e) {
+      setImageCandidates([]);
+      setImageSearchError(
+        e instanceof Error ? e.message : "Erreur de recherche d'image"
+      );
+    } finally {
+      setSearchingImage(false);
+    }
+  };
+
+  const pickCandidate = (url: string) => {
+    setState((s) => ({ ...s, imageUrl: url }));
+    setImageCandidates([]);
+  };
 
   const isEdit = recipeId !== undefined;
 
@@ -171,7 +233,7 @@ export function RecipeForm({
   const submit = (e: FormEvent) => {
     e.preventDefault();
     setError(null);
-    const input = toRecipeInput(state);
+    const input = toRecipeInput(state, dinerKeys);
     if (!input.name) {
       setError("Le nom est obligatoire");
       return;
@@ -348,14 +410,28 @@ export function RecipeForm({
         </div>
       </div>
 
+      <AllowedSlotsField
+        slots={state.allowedSlots}
+        onChange={(next) => setState((s) => ({ ...s, allowedSlots: next }))}
+      />
+
       <div>
         <Label>Préférences par convive</Label>
         <p className="text-xs text-muted-foreground mb-2">
           Cliquer pour faire défiler : neutre → adore → n'aime pas
         </p>
-        <div className="grid grid-cols-3 gap-2">
-          {DINERS.map((diner) => {
-            const pref = state.preferences[diner];
+        <div
+          className={cn(
+            "grid gap-2",
+            dinerKeys.length <= 2
+              ? "grid-cols-2"
+              : dinerKeys.length === 3
+              ? "grid-cols-3"
+              : "grid-cols-2 sm:grid-cols-4"
+          )}
+        >
+          {dinerKeys.map((diner) => {
+            const pref = state.preferences[diner] ?? "like";
             return (
               <button
                 key={diner}
@@ -370,7 +446,9 @@ export function RecipeForm({
                 )}
               >
                 <span className="text-2xl">{PREFERENCE_EMOJI[pref]}</span>
-                <span className="text-sm font-medium">{DINER_LABELS[diner]}</span>
+                <span className="text-sm font-medium">
+                  {dinerLabel(dinersConfig, diner)}
+                </span>
               </button>
             );
           })}
@@ -387,6 +465,116 @@ export function RecipeForm({
           }
           rows={2}
         />
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <Label htmlFor="imageUrl" className="mb-0">
+            Image
+          </Label>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={handleSearchImage}
+            disabled={searchingImage || !state.name.trim()}
+          >
+            {searchingImage ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Sparkles className="size-4" />
+            )}
+            Trouver
+          </Button>
+        </div>
+        <div className="flex gap-3 items-start">
+          <div className="relative size-24 shrink-0 rounded-md overflow-hidden bg-muted ring-1 ring-border flex items-center justify-center">
+            {state.imageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={state.imageUrl}
+                alt={state.name || "Aperçu"}
+                className="size-full object-cover"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = "none";
+                }}
+              />
+            ) : (
+              <ImageIcon className="size-7 text-muted-foreground/50" />
+            )}
+          </div>
+          <div className="flex-1 space-y-2">
+            <Input
+              id="imageUrl"
+              type="url"
+              placeholder="https://images.pexels.com/..."
+              value={state.imageUrl}
+              onChange={(e) =>
+                setState((s) => ({ ...s, imageUrl: e.target.value }))
+              }
+            />
+            {state.imageUrl && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setState((s) => ({ ...s, imageUrl: "" }))}
+              >
+                <X className="size-4" />
+                Retirer
+              </Button>
+            )}
+            {imageSearchError && (
+              <p className="text-xs text-red-600">{imageSearchError}</p>
+            )}
+          </div>
+        </div>
+
+        {imageCandidates.length > 0 && (
+          <div className="mt-3 rounded-lg border border-border bg-muted/30 p-3">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs text-muted-foreground">
+                Choisis une image ({imageCandidates.length} propositions)
+              </p>
+              <button
+                type="button"
+                onClick={() => setImageCandidates([])}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                Annuler
+              </button>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {imageCandidates.map((url) => {
+                const selected = url === state.imageUrl;
+                return (
+                  <button
+                    key={url}
+                    type="button"
+                    onClick={() => pickCandidate(url)}
+                    className={cn(
+                      "relative aspect-square rounded-md overflow-hidden ring-2 transition-all hover:opacity-90",
+                      selected
+                        ? "ring-primary"
+                        : "ring-transparent hover:ring-border-strong"
+                    )}
+                    aria-label="Sélectionner cette image"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={url}
+                      alt=""
+                      className="size-full object-cover"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).style.opacity = "0.3";
+                      }}
+                    />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-3 gap-3">
@@ -525,5 +713,137 @@ export function RecipeForm({
         )}
       </div>
     </form>
+  );
+}
+
+function AllowedSlotsField({
+  slots,
+  onChange,
+}: {
+  slots: Set<SlotKey>;
+  onChange: (next: Set<SlotKey>) => void;
+}) {
+  const isRestricted = slots.size > 0;
+
+  const toggleSlot = (key: SlotKey) => {
+    const next = new Set(slots);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    onChange(next);
+  };
+
+  const setAll = (lunch: boolean, dinner: boolean) => {
+    const next = new Set<SlotKey>();
+    for (const day of DAYS_OF_WEEK) {
+      if (lunch) next.add(`${day}|lunch`);
+      if (dinner) next.add(`${day}|dinner`);
+    }
+    onChange(next);
+  };
+
+  const setWeekendOnly = () => {
+    const next = new Set<SlotKey>();
+    for (const day of [4, 5, 6] as DayOfWeek[]) {
+      next.add(`${day}|lunch`);
+      next.add(`${day}|dinner`);
+    }
+    onChange(next);
+  };
+
+  return (
+    <div>
+      <Label>Disponibilité</Label>
+      <p className="text-xs text-muted-foreground mb-2">
+        {isRestricted
+          ? `Cette recette ne sera proposée que sur ${slots.size} créneau${slots.size > 1 ? "x" : ""}`
+          : "Disponible toute la semaine (cocher pour restreindre)"}
+      </p>
+
+      {isRestricted && (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          <QuickAction onClick={() => onChange(new Set())}>
+            Aucune restriction
+          </QuickAction>
+          <QuickAction onClick={() => setAll(false, true)}>
+            Soir uniquement
+          </QuickAction>
+          <QuickAction onClick={() => setAll(true, false)}>
+            Midi uniquement
+          </QuickAction>
+          <QuickAction onClick={setWeekendOnly}>Weekend</QuickAction>
+        </div>
+      )}
+
+      {!isRestricted && (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          <QuickAction onClick={() => setAll(false, true)}>
+            Soir uniquement
+          </QuickAction>
+          <QuickAction onClick={() => setAll(true, false)}>
+            Midi uniquement
+          </QuickAction>
+          <QuickAction onClick={setWeekendOnly}>Weekend</QuickAction>
+        </div>
+      )}
+
+      <div className="grid grid-cols-8 gap-1 text-xs">
+        <div></div>
+        {DAYS_OF_WEEK.map((day) => (
+          <div
+            key={day}
+            className="text-center font-semibold text-muted-foreground py-1"
+          >
+            {DAY_LABELS_SHORT[day]}
+          </div>
+        ))}
+        {(["lunch", "dinner"] as const).flatMap((meal) => [
+          <div
+            key={`${meal}-label`}
+            className="text-xs font-semibold text-muted-foreground self-center"
+          >
+            {meal === "lunch" ? "Midi" : "Soir"}
+          </div>,
+          ...DAYS_OF_WEEK.map((day) => {
+            const key = `${day}|${meal}` as SlotKey;
+            const active = slots.has(key);
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => toggleSlot(key)}
+                className={cn(
+                  "h-9 rounded-md border text-xs font-medium transition-colors",
+                  active || !isRestricted
+                    ? "bg-primary/10 border-primary text-primary"
+                    : "bg-muted/30 border-border text-muted-foreground/40"
+                )}
+                aria-label={`${DAY_LABELS_SHORT[day]} ${meal === "lunch" ? "midi" : "soir"}`}
+                aria-pressed={active}
+              >
+                {active ? "✓" : "·"}
+              </button>
+            );
+          }),
+        ])}
+      </div>
+    </div>
+  );
+}
+
+function QuickAction({
+  onClick,
+  children,
+}: {
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center px-2.5 h-7 rounded-full text-xs font-medium border border-border bg-card hover:border-primary hover:bg-primary-soft/40 hover:text-primary text-muted-foreground transition-colors"
+    >
+      {children}
+    </button>
   );
 }

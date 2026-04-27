@@ -1,5 +1,5 @@
 image:
-  repository: docker-registry.btgroup.io/eat-scheduler
+  repository: ghcr.io/m4dm4rtig4n/eat_scheduler
   tag: "0.1.0"
 
 database:

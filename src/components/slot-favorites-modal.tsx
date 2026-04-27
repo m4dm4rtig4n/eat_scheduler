@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, Star, Search, ChevronLeft } from "lucide-react";
+import { X, Star, Pin, Search, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -11,12 +11,17 @@ import {
   type DayOfWeek,
 } from "@/lib/days";
 import type { RecipeWithDetails } from "@/lib/db/recipes";
-import type { SlotFavorite, MealType } from "@/lib/db/slot-favorites";
+import type {
+  SlotFavorite,
+  MealType,
+  SlotFavoriteEntry,
+} from "@/lib/db/slot-favorites";
 
 const MEAL_TYPES: MealType[] = ["lunch", "dinner"];
 const MEAL_LABELS: Record<MealType, string> = { lunch: "Midi", dinner: "Soir" };
 
 type SlotKey = `${DayOfWeek}|${MealType}`;
+type EntryMap = Map<number, boolean>; // recipeId → pinned
 
 function key(day: DayOfWeek, meal: MealType): SlotKey {
   return `${day}|${meal}`;
@@ -29,9 +34,7 @@ export function SlotFavoritesModal({
   recipes: RecipeWithDetails[];
   onClose: () => void;
 }) {
-  const [favorites, setFavorites] = useState<Map<SlotKey, Set<number>>>(
-    new Map()
-  );
+  const [favorites, setFavorites] = useState<Map<SlotKey, EntryMap>>(new Map());
   const [editing, setEditing] = useState<{
     day: DayOfWeek;
     meal: MealType;
@@ -42,11 +45,11 @@ export function SlotFavoritesModal({
     fetch("/api/slot-favorites")
       .then((r) => r.json())
       .then((data: SlotFavorite[]) => {
-        const map = new Map<SlotKey, Set<number>>();
+        const map = new Map<SlotKey, EntryMap>();
         for (const f of data) {
           const k = key(f.dayOfWeek, f.mealType);
-          if (!map.has(k)) map.set(k, new Set());
-          map.get(k)!.add(f.recipeId);
+          if (!map.has(k)) map.set(k, new Map());
+          map.get(k)!.set(f.recipeId, Boolean(f.pinned));
         }
         setFavorites(map);
       })
@@ -58,11 +61,14 @@ export function SlotFavoritesModal({
   const saveSlot = async (
     day: DayOfWeek,
     meal: MealType,
-    recipeIds: number[]
+    entries: SlotFavoriteEntry[]
   ) => {
+    const entryMap: EntryMap = new Map(
+      entries.map((e) => [e.recipeId, e.pinned])
+    );
     setFavorites((curr) => {
       const next = new Map(curr);
-      next.set(key(day, meal), new Set(recipeIds));
+      next.set(key(day, meal), entryMap);
       return next;
     });
     await fetch("/api/slot-favorites", {
@@ -71,22 +77,22 @@ export function SlotFavoritesModal({
       body: JSON.stringify({
         dayOfWeek: day,
         mealType: meal,
-        recipeIds,
+        entries,
       }),
     });
   };
 
   if (editing) {
-    const current = favorites.get(key(editing.day, editing.meal)) ?? new Set();
+    const current = favorites.get(key(editing.day, editing.meal)) ?? new Map();
     return (
       <SlotEditor
         recipes={recipes}
         day={editing.day}
         meal={editing.meal}
-        selectedIds={current}
+        currentEntries={current}
         onBack={() => setEditing(null)}
-        onSave={(ids) => {
-          saveSlot(editing.day, editing.meal, ids);
+        onSave={(entries) => {
+          saveSlot(editing.day, editing.meal, entries);
           setEditing(null);
         }}
       />
@@ -115,9 +121,13 @@ export function SlotFavoritesModal({
             <X className="size-4" />
           </button>
         </div>
-        <div className="px-4 py-2 text-xs text-muted-foreground">
-          Choisis tes recettes favorites pour chaque jour. Elles seront
-          privilégiées lors de la génération.
+        <div className="px-4 py-2 text-xs text-muted-foreground space-y-1">
+          <p>
+            <Star className="inline size-3 fill-amber-400 text-amber-500" /> Favori : recette privilégiée (boost ×3 au tirage).
+          </p>
+          <p>
+            <Pin className="inline size-3 text-primary" /> Épinglé : recette imposée (toujours placée sur ce slot).
+          </p>
         </div>
         <div className="overflow-y-auto p-2">
           {loading ? (
@@ -136,10 +146,16 @@ export function SlotFavoritesModal({
                   </p>
                   <div className="grid grid-cols-2 gap-2">
                     {MEAL_TYPES.map((meal) => {
-                      const ids = favorites.get(key(day, meal)) ?? new Set();
-                      const names = Array.from(ids)
-                        .map((id) => recipeById.get(id)?.name)
-                        .filter(Boolean) as string[];
+                      const entries =
+                        favorites.get(key(day, meal)) ?? new Map();
+                      const list = Array.from(entries.entries())
+                        .map(([id, pinned]) => {
+                          const recipe = recipeById.get(id);
+                          return recipe
+                            ? { name: recipe.name, pinned }
+                            : null;
+                        })
+                        .filter((x): x is { name: string; pinned: boolean } => x !== null);
                       return (
                         <button
                           key={meal}
@@ -149,20 +165,28 @@ export function SlotFavoritesModal({
                           <p className="text-xs text-muted-foreground mb-1">
                             {MEAL_LABELS[meal]}
                           </p>
-                          {names.length === 0 ? (
+                          {list.length === 0 ? (
                             <p className="text-xs text-muted-foreground/70">
                               + ajouter
                             </p>
                           ) : (
                             <ul className="text-xs space-y-0.5">
-                              {names.slice(0, 3).map((n) => (
-                                <li key={n} className="truncate">
-                                  ⭐ {n}
+                              {list.slice(0, 3).map((item) => (
+                                <li
+                                  key={item.name}
+                                  className="truncate flex items-center gap-1"
+                                >
+                                  {item.pinned ? (
+                                    <Pin className="size-3 text-primary shrink-0" />
+                                  ) : (
+                                    <Star className="size-3 fill-amber-400 text-amber-500 shrink-0" />
+                                  )}
+                                  <span className="truncate">{item.name}</span>
                                 </li>
                               ))}
-                              {names.length > 3 && (
+                              {list.length > 3 && (
                                 <li className="text-muted-foreground">
-                                  +{names.length - 3} autres
+                                  +{list.length - 3} autres
                                 </li>
                               )}
                             </ul>
@@ -181,35 +205,52 @@ export function SlotFavoritesModal({
   );
 }
 
+type EntryState = "none" | "favorite" | "pinned";
+
+function getEntryState(entries: EntryMap, id: number): EntryState {
+  if (!entries.has(id)) return "none";
+  return entries.get(id) ? "pinned" : "favorite";
+}
+
 function SlotEditor({
   recipes,
   day,
   meal,
-  selectedIds,
+  currentEntries,
   onBack,
   onSave,
 }: {
   recipes: RecipeWithDetails[];
   day: DayOfWeek;
   meal: MealType;
-  selectedIds: Set<number>;
+  currentEntries: EntryMap;
   onBack: () => void;
-  onSave: (ids: number[]) => void;
+  onSave: (entries: SlotFavoriteEntry[]) => void;
 }) {
-  const [selected, setSelected] = useState<Set<number>>(new Set(selectedIds));
+  const [entries, setEntries] = useState<EntryMap>(new Map(currentEntries));
   const [search, setSearch] = useState("");
 
   const filtered = recipes.filter((r) =>
     r.name.toLowerCase().includes(search.toLowerCase())
   );
 
-  const toggle = (id: number) => {
-    setSelected((curr) => {
-      const next = new Set(curr);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+  // Cycle : none → favorite → pinned → none
+  const cycle = (id: number) => {
+    setEntries((curr) => {
+      const next = new Map(curr);
+      const state = getEntryState(curr, id);
+      if (state === "none") next.set(id, false); // → favorite
+      else if (state === "favorite") next.set(id, true); // → pinned
+      else next.delete(id); // → none
       return next;
     });
+  };
+
+  const handleSave = () => {
+    const out: SlotFavoriteEntry[] = Array.from(entries.entries()).map(
+      ([recipeId, pinned]) => ({ recipeId, pinned })
+    );
+    onSave(out);
   };
 
   return (
@@ -227,10 +268,7 @@ function SlotEditor({
             <p className="text-sm font-medium">
               {DAY_LABELS_SHORT[day]} · {MEAL_LABELS[meal]}
             </p>
-            <Button
-              size="sm"
-              onClick={() => onSave(Array.from(selected))}
-            >
+            <Button size="sm" onClick={handleSave}>
               Enregistrer
             </Button>
           </div>
@@ -244,6 +282,9 @@ function SlotEditor({
               className="w-full h-10 rounded-lg border border-border bg-background pl-9 pr-3 text-sm"
             />
           </div>
+          <p className="text-xs text-muted-foreground mt-2 px-0.5">
+            Tape sur une recette pour cycler : neutre → favori → épinglé
+          </p>
         </div>
         <ul className="overflow-y-auto p-2 space-y-1">
           {filtered.length === 0 ? (
@@ -252,34 +293,47 @@ function SlotEditor({
             </li>
           ) : (
             filtered.map((r) => {
-              const isSelected = selected.has(r.id);
+              const state = getEntryState(entries, r.id);
               return (
                 <li key={r.id}>
                   <button
-                    onClick={() => toggle(r.id)}
+                    onClick={() => cycle(r.id)}
                     className={cn(
                       "w-full text-left flex items-center gap-3 px-3 py-3 rounded-lg transition-colors",
-                      isSelected
-                        ? "bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-950/50"
-                        : "hover:bg-muted active:bg-muted/70"
+                      state === "favorite" &&
+                        "bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-950/50",
+                      state === "pinned" &&
+                        "bg-primary/10 hover:bg-primary/15",
+                      state === "none" && "hover:bg-muted active:bg-muted/70"
                     )}
                   >
                     <span
                       className={cn(
-                        "size-6 rounded-full border-2 flex items-center justify-center shrink-0",
-                        isSelected
-                          ? "bg-amber-400 border-amber-400"
-                          : "border-border"
+                        "size-7 rounded-full border-2 flex items-center justify-center shrink-0",
+                        state === "favorite" &&
+                          "bg-amber-400 border-amber-400 text-white",
+                        state === "pinned" &&
+                          "bg-primary border-primary text-primary-foreground",
+                        state === "none" && "border-border"
                       )}
                     >
-                      {isSelected && (
-                        <Star className="size-3 fill-white text-white" />
+                      {state === "favorite" && (
+                        <Star className="size-3.5 fill-white" />
                       )}
+                      {state === "pinned" && <Pin className="size-3.5" />}
                     </span>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{r.name}</p>
                       <p className="text-xs text-muted-foreground">
                         {r.servings} pers · {r.ingredients.length} ingr
+                        {state === "favorite" && (
+                          <span className="ml-1 text-amber-600">· Favori</span>
+                        )}
+                        {state === "pinned" && (
+                          <span className="ml-1 text-primary font-medium">
+                            · Épinglé
+                          </span>
+                        )}
                       </p>
                     </div>
                   </button>

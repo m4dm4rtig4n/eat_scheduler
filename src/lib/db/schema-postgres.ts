@@ -7,6 +7,7 @@ import {
   timestamp,
   date,
   primaryKey,
+  boolean,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
@@ -51,6 +52,22 @@ export const recipePreferences = pgTable(
   })
 );
 
+export const recipeAllowedSlots = pgTable(
+  "recipe_allowed_slots",
+  {
+    recipeId: integer("recipe_id")
+      .notNull()
+      .references(() => recipes.id, { onDelete: "cascade" }),
+    dayOfWeek: integer("day_of_week").notNull(),
+    mealType: text("meal_type").notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({
+      columns: [table.recipeId, table.dayOfWeek, table.mealType],
+    }),
+  })
+);
+
 export const slotFavorites = pgTable(
   "slot_favorites",
   {
@@ -59,6 +76,7 @@ export const slotFavorites = pgTable(
     recipeId: integer("recipe_id")
       .notNull()
       .references(() => recipes.id, { onDelete: "cascade" }),
+    pinned: boolean("pinned").notNull().default(false),
   },
   (table) => ({
     pk: primaryKey({
@@ -75,8 +93,19 @@ export const plannedMeals = pgTable("planned_meals", {
     .notNull()
     .references(() => recipes.id, { onDelete: "cascade" }),
   servingsMultiplier: real("servings_multiplier").notNull().default(1.0),
-  diners: text("diners").notNull().default('["clement","nath","enfant"]'),
+  diners: text("diners").notNull().default('["clement","nath","chloe","simon"]'),
   notes: text("notes"),
+});
+
+export const diners = pgTable("diners", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  label: text("label").notNull(),
+  initials: text("initials").notNull(),
+  colorKey: text("color_key").notNull().default("blue"),
+  coefficient: real("coefficient").notNull().default(1.0),
+  position: integer("position").notNull().default(0),
+  archived: boolean("archived").notNull().default(false),
 });
 
 export const recipesRelations = relations(recipes, ({ many }) => ({
@@ -84,7 +113,18 @@ export const recipesRelations = relations(recipes, ({ many }) => ({
   preferences: many(recipePreferences),
   meals: many(plannedMeals),
   slotFavorites: many(slotFavorites),
+  allowedSlots: many(recipeAllowedSlots),
 }));
+
+export const recipeAllowedSlotsRelations = relations(
+  recipeAllowedSlots,
+  ({ one }) => ({
+    recipe: one(recipes, {
+      fields: [recipeAllowedSlots.recipeId],
+      references: [recipes.id],
+    }),
+  })
+);
 
 export const slotFavoritesRelations = relations(slotFavorites, ({ one }) => ({
   recipe: one(recipes, {

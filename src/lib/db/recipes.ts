@@ -3,8 +3,12 @@ import { db, schema } from "./index";
 import type { RecipeInput } from "@/lib/validators";
 import type { Diner, Preference } from "@/lib/diners";
 import type { Season } from "@/lib/seasons";
+import type { DayOfWeek } from "@/lib/days";
 
-const { recipes, recipeIngredients, recipePreferences } = schema;
+type MealType = "lunch" | "dinner";
+
+const { recipes, recipeIngredients, recipePreferences, recipeAllowedSlots } =
+  schema;
 
 export type RecipeWithDetails = {
   id: number;
@@ -29,6 +33,10 @@ export type RecipeWithDetails = {
     diner: Diner;
     preference: Preference;
   }>;
+  allowedSlots: Array<{
+    dayOfWeek: DayOfWeek;
+    mealType: MealType;
+  }>;
 };
 
 export async function listRecipes(): Promise<RecipeWithDetails[]> {
@@ -39,6 +47,7 @@ export async function listRecipes(): Promise<RecipeWithDetails[]> {
         orderBy: [asc(recipeIngredients.position)],
       },
       preferences: true,
+      allowedSlots: true,
     },
   });
   return result as RecipeWithDetails[];
@@ -54,6 +63,7 @@ export async function getRecipe(
         orderBy: [asc(recipeIngredients.position)],
       },
       preferences: true,
+      allowedSlots: true,
     },
   });
   return (result ?? null) as RecipeWithDetails | null;
@@ -95,6 +105,16 @@ export async function createRecipe(
         recipeId: created.id,
         diner: p.diner,
         preference: p.preference,
+      }))
+    );
+  }
+
+  if (input.allowedSlots.length > 0) {
+    await (db as any).insert(recipeAllowedSlots).values(
+      input.allowedSlots.map((s) => ({
+        recipeId: created.id,
+        dayOfWeek: s.dayOfWeek,
+        mealType: s.mealType,
       }))
     );
   }
@@ -149,6 +169,20 @@ export async function updateRecipe(
         recipeId: id,
         diner: p.diner,
         preference: p.preference,
+      }))
+    );
+  }
+
+  await (db as any)
+    .delete(recipeAllowedSlots)
+    .where(eq(recipeAllowedSlots.recipeId, id));
+
+  if (input.allowedSlots.length > 0) {
+    await (db as any).insert(recipeAllowedSlots).values(
+      input.allowedSlots.map((s) => ({
+        recipeId: id,
+        dayOfWeek: s.dayOfWeek,
+        mealType: s.mealType,
       }))
     );
   }

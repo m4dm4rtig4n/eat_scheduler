@@ -1,4 +1,3 @@
-import { DINERS } from "@/lib/diners";
 import type { PlannedMealWithRecipe } from "@/lib/db/meals";
 
 export type ShoppingItem = {
@@ -44,12 +43,11 @@ export function buildShoppingList(
   meals: PlannedMealWithRecipe[]
 ): ShoppingItem[] {
   const map = new Map<string, ShoppingItem>();
-  const totalDiners = DINERS.length;
 
   for (const meal of meals) {
-    const dinersRatio =
-      meal.diners.length > 0 ? meal.diners.length / totalDiners : 1;
-    const effectiveMultiplier = meal.servingsMultiplier * dinersRatio;
+    // Le servingsMultiplier reflète déjà le ratio coefficients/servings,
+    // pas besoin d'un dinersRatio supplémentaire.
+    const effectiveMultiplier = meal.servingsMultiplier;
 
     for (const ingredient of meal.recipe.ingredients) {
       const key = normalizeName(ingredient.name);

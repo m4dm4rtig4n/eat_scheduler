@@ -63,7 +63,7 @@ const childLoves = (name: string): boolean => {
 };
 
 function defaultPreferences(name: string): Array<{ diner: Diner; preference: Preference }> {
-  const enfant: Preference = childDislikes(name)
+  const childPref: Preference = childDislikes(name)
     ? "dislike"
     : childLoves(name)
     ? "love"
@@ -71,7 +71,8 @@ function defaultPreferences(name: string): Array<{ diner: Diner; preference: Pre
   return [
     { diner: "clement", preference: "like" },
     { diner: "nath", preference: "like" },
-    { diner: "enfant", preference: enfant },
+    { diner: "chloe", preference: childPref },
+    { diner: "simon", preference: childPref },
   ];
 }
 

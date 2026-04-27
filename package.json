@@ -10,7 +10,8 @@
     "db:migrate": "tsx src/lib/db/migrate.ts",
     "db:studio": "drizzle-kit studio",
     "db:push": "drizzle-kit push",
-    "db:seed": "tsx src/lib/db/seed.ts"
+    "db:seed": "tsx src/lib/db/seed.ts",
+    "images:backfill": "tsx scripts/backfill-images.ts"
   },
   "dependencies": {
     "better-sqlite3": "^12.9.0",

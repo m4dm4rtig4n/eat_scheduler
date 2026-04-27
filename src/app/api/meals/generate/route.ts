@@ -8,7 +8,8 @@ import {
 } from "@/lib/db/meals";
 import { listAllFavorites } from "@/lib/db/slot-favorites";
 import { generateWeekPlan } from "@/lib/meal-generator";
-import { DINERS } from "@/lib/diners";
+import { activeDinerKeys } from "@/lib/diners";
+import { listDiners } from "@/lib/db/diners";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -33,10 +34,18 @@ export async function POST(request: NextRequest) {
     await deleteMealsBetween(startDate, endDate, mealTypes);
   }
 
-  const [existingMeals, slotFavorites] = await Promise.all([
+  const [existingMeals, slotFavorites, allDiners] = await Promise.all([
     listMealsBetween(startDate, endDate),
     listAllFavorites(),
+    listDiners(),
   ]);
+  const dinerKeys = activeDinerKeys(allDiners);
+  if (dinerKeys.length === 0) {
+    return NextResponse.json(
+      { error: "Aucune personne configurée. Va dans les Réglages." },
+      { status: 422 }
+    );
+  }
   const slots = generateWeekPlan({
     recipes,
     startDate,
@@ -45,7 +54,7 @@ export async function POST(request: NextRequest) {
     existingMeals: existingMeals
       .filter((m) => mealTypes.includes(m.mealType as "lunch" | "dinner"))
       .map((m) => ({ date: m.date, mealType: m.mealType, recipeId: m.recipeId })),
-    diners: [...DINERS],
+    diners: dinerKeys,
     seasonOverride,
     slotFavorites,
   });

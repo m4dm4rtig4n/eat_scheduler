@@ -1,0 +1,1 @@
+ALTER TABLE `slot_favorites` ADD `pinned` integer DEFAULT false NOT NULL;

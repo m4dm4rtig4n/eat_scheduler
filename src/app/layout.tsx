@@ -3,6 +3,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { BottomNav } from "@/components/bottom-nav";
 import { SWRegister } from "@/components/sw-register";
+import { DinersProvider } from "@/components/diners-provider";
+import { listDiners } from "@/lib/db/diners";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -33,19 +35,31 @@ export const viewport: Viewport = {
   userScalable: false,
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Charge la config diners au layout pour qu'elle soit dispo dans toute l'app
+  let initialDiners: Awaited<ReturnType<typeof listDiners>> = [];
+  try {
+    initialDiners = await listDiners();
+  } catch {
+    // Si la DB est indisponible, on laisse le provider utiliser le fallback
+  }
+
   return (
     <html
       lang="fr"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <main className="flex-1 max-w-2xl w-full mx-auto pb-2">{children}</main>
-        <BottomNav />
+        <DinersProvider initialDiners={initialDiners}>
+          <main className="flex-1 max-w-2xl w-full mx-auto pb-28">
+            {children}
+          </main>
+          <BottomNav />
+        </DinersProvider>
         <SWRegister />
       </body>
     </html>

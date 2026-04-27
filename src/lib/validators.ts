@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DINERS } from "@/lib/diners";
+import { COLOR_KEYS } from "@/lib/diners";
 import { SEASONS } from "@/lib/seasons";
 
 export const ingredientInputSchema = z.object({
@@ -8,13 +8,25 @@ export const ingredientInputSchema = z.object({
   position: z.number().int().nonnegative().optional(),
 });
 
-export const dinerSchema = z.enum(DINERS);
+// Une clé de convive (validée à la table runtime, pas un enum statique)
+export const dinerSchema = z
+  .string()
+  .min(1)
+  .max(50)
+  .regex(/^[a-z0-9_-]+$/, "Clé invalide (a-z, 0-9, _, - uniquement)");
 export const preferenceSchema = z.enum(["love", "like", "dislike"]);
 
 export const preferenceInputSchema = z.object({
   diner: dinerSchema,
   preference: preferenceSchema,
 });
+
+export const allowedSlotInputSchema = z.object({
+  dayOfWeek: z.coerce.number().int().min(0).max(6),
+  mealType: z.enum(["lunch", "dinner"]),
+});
+
+export type AllowedSlotInput = z.infer<typeof allowedSlotInputSchema>;
 
 export const recipeInputSchema = z.object({
   name: z.string().min(1, "Nom requis").max(200),
@@ -29,6 +41,7 @@ export const recipeInputSchema = z.object({
   season: z.enum(SEASONS).default("all"),
   ingredients: z.array(ingredientInputSchema).default([]),
   preferences: z.array(preferenceInputSchema).default([]),
+  allowedSlots: z.array(allowedSlotInputSchema).default([]),
 });
 
 export type RecipeInput = z.infer<typeof recipeInputSchema>;
@@ -44,7 +57,7 @@ export const plannedMealSchema = z.object({
   mealType: z.enum(["lunch", "dinner"]),
   recipeId: z.coerce.number().int().positive(),
   servingsMultiplier: z.coerce.number().positive().default(1),
-  diners: z.array(dinerSchema).min(1).default([...DINERS]),
+  diners: z.array(dinerSchema).min(1).default([]),
   notes: z.string().max(500).optional().nullable(),
 });
 
@@ -52,10 +65,17 @@ export type PlannedMealInput = z.infer<typeof plannedMealSchema>;
 
 export const plannedMealUpdateSchema = plannedMealSchema.partial();
 
+export const slotFavoriteEntrySchema = z.object({
+  recipeId: z.coerce.number().int().positive(),
+  pinned: z.boolean().default(false),
+});
+
 export const slotFavoritesSchema = z.object({
   dayOfWeek: z.coerce.number().int().min(0).max(6),
   mealType: z.enum(["lunch", "dinner"]),
-  recipeIds: z.array(z.coerce.number().int().positive()).default([]),
+  // Format moderne : entries avec pinned. On accepte aussi le legacy (array d'ids)
+  entries: z.array(slotFavoriteEntrySchema).optional(),
+  recipeIds: z.array(z.coerce.number().int().positive()).optional(),
 });
 
 export type SlotFavoritesInput = z.infer<typeof slotFavoritesSchema>;
@@ -72,3 +92,33 @@ export const generateMealsSchema = z.object({
 });
 
 export type GenerateMealsInput = z.infer<typeof generateMealsSchema>;
+
+export const colorKeySchema = z.enum(COLOR_KEYS);
+
+export const dinerCreateSchema = z.object({
+  key: z
+    .string()
+    .min(1, "Clé requise")
+    .max(50)
+    .regex(/^[a-z0-9_-]+$/, "Clé invalide (a-z, 0-9, _, - uniquement)"),
+  label: z.string().min(1, "Nom requis").max(50),
+  initials: z.string().min(1, "Initiales requises").max(3),
+  colorKey: colorKeySchema,
+  coefficient: z.coerce.number().min(0.1).max(2),
+});
+
+export const dinerUpdateSchema = z.object({
+  label: z.string().min(1).max(50).optional(),
+  initials: z.string().min(1).max(3).optional(),
+  colorKey: colorKeySchema.optional(),
+  coefficient: z.coerce.number().min(0.1).max(2).optional(),
+  archived: z.boolean().optional(),
+  position: z.coerce.number().int().nonnegative().optional(),
+});
+
+export const dinerReorderSchema = z.object({
+  orderedIds: z.array(z.coerce.number().int().positive()).min(1),
+});
+
+export type DinerCreateInput = z.infer<typeof dinerCreateSchema>;
+export type DinerUpdateInput = z.infer<typeof dinerUpdateSchema>;

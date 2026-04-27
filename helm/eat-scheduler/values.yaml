@@ -1,6 +1,7 @@
 image:
-  repository: eat-scheduler
-  tag: latest
+  repository: ghcr.io/m4dm4rtig4n/eat_scheduler
+  # Si vide, utilise .Chart.AppVersion (synchronisé avec semantic-release)
+  tag: ""
   pullPolicy: IfNotPresent
 
 replicaCount: 1

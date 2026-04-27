@@ -1,7 +1,7 @@
 import { and, eq, gte, lte, asc, inArray } from "drizzle-orm";
 import { db, schema } from "./index";
 import type { PlannedMealInput } from "@/lib/validators";
-import { DINERS, type Diner, isDiner } from "@/lib/diners";
+import type { Diner } from "@/lib/diners";
 
 const { plannedMeals, recipeIngredients } = schema;
 
@@ -18,18 +18,19 @@ export type PlannedMealWithRecipe = {
     name: string;
     servings: number;
     weight: number;
+    imageUrl: string | null;
     ingredients: Array<{ name: string; quantity: string }>;
   };
 };
 
 function parseDiners(raw: unknown): Diner[] {
-  if (typeof raw !== "string") return [...DINERS];
+  if (typeof raw !== "string") return [];
   try {
     const arr = JSON.parse(raw);
-    if (!Array.isArray(arr)) return [...DINERS];
-    return arr.filter((x): x is Diner => typeof x === "string" && isDiner(x));
+    if (!Array.isArray(arr)) return [];
+    return arr.filter((x): x is Diner => typeof x === "string" && x.length > 0);
   } catch {
-    return [...DINERS];
+    return [];
   }
 }
 
@@ -69,6 +70,7 @@ export async function listMealsBetween(
       name: row.recipe.name,
       servings: row.recipe.servings,
       weight: row.recipe.weight ?? 3,
+      imageUrl: row.recipe.imageUrl ?? null,
       ingredients: row.recipe.ingredients.map((i: any) => ({
         name: i.name,
         quantity: i.quantity,
