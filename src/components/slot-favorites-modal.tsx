@@ -105,7 +105,7 @@ export function SlotFavoritesModal({
       onClick={onClose}
     >
       <div
-        className="bg-card w-full max-w-2xl rounded-t-2xl sm:rounded-2xl max-h-[90vh] flex flex-col"
+        className="bg-card w-full max-w-2xl rounded-t-2xl sm:rounded-2xl max-h-[90dvh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-4 border-b border-border flex items-center justify-between">
@@ -255,7 +255,7 @@ function SlotEditor({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center">
-      <div className="bg-card w-full max-w-2xl rounded-t-2xl sm:rounded-2xl max-h-[90vh] flex flex-col">
+      <div className="bg-card w-full max-w-2xl rounded-t-2xl sm:rounded-2xl max-h-[90dvh] flex flex-col">
         <div className="p-4 border-b border-border">
           <div className="flex items-center justify-between mb-3">
             <button

@@ -994,7 +994,7 @@ function RecipePicker({
       onClick={onClose}
     >
       <div
-        className="bg-card w-full max-w-2xl rounded-t-[var(--radius-lg)] sm:rounded-[var(--radius-lg)] max-h-[90vh] flex flex-col shadow-lift animate-[slide-up_0.3s_cubic-bezier(0.22,1,0.36,1)]"
+        className="bg-card w-full max-w-2xl rounded-t-[var(--radius-lg)] sm:rounded-[var(--radius-lg)] max-h-[90dvh] flex flex-col shadow-lift animate-[slide-up_0.3s_cubic-bezier(0.22,1,0.36,1)]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-center pt-2 sm:hidden">

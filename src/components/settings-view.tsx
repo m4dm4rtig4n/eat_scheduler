@@ -252,22 +252,22 @@ function DinerRow({
           Coefficient ×{diner.coefficient}
         </p>
       </div>
-      <div className="flex flex-col gap-0.5 shrink-0">
+      <div className="flex flex-col shrink-0">
         <button
           onClick={onMoveUp}
           disabled={!canMoveUp}
-          className="size-6 inline-flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+          className="h-9 w-11 inline-flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
           aria-label="Monter"
         >
-          <ArrowUp className="size-3.5" />
+          <ArrowUp className="size-4" />
         </button>
         <button
           onClick={onMoveDown}
           disabled={!canMoveDown}
-          className="size-6 inline-flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+          className="h-9 w-11 inline-flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
           aria-label="Descendre"
         >
-          <ArrowDown className="size-3.5" />
+          <ArrowDown className="size-4" />
         </button>
       </div>
       <button

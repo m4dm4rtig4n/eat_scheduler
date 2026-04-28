@@ -363,7 +363,7 @@ export function RecipeForm({
               key={n}
               type="button"
               onClick={() => setState((s) => ({ ...s, weight: n }))}
-              className="p-1.5"
+              className="inline-flex items-center justify-center size-11"
               aria-label={`${n} étoile${n > 1 ? "s" : ""}`}
             >
               <Star
@@ -812,7 +812,7 @@ function AllowedSlotsField({
                 type="button"
                 onClick={() => toggleSlot(key)}
                 className={cn(
-                  "h-9 rounded-md border text-xs font-medium transition-colors",
+                  "h-11 rounded-md border text-xs font-medium transition-colors",
                   active || !isRestricted
                     ? "bg-primary/10 border-primary text-primary"
                     : "bg-muted/30 border-border text-muted-foreground/40"
