@@ -1,3 +1,9 @@
+## [1.2.1](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.2.0...v1.2.1) (2026-04-30)
+
+### Bug Fixes
+
+* **release:** remove redundant version tag from image tags ([46e6bff](https://github.com/m4dm4rtig4n/eat_scheduler/commit/46e6bfff8a1de46fd5b21be0b9f496f8e5b9da23))
+
 ## [1.2.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.1.0...v1.2.0) (2026-04-30)
 
 ### Features
