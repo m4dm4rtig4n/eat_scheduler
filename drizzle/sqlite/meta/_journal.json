@@ -57,6 +57,13 @@
       "when": 1777246000000,
       "tag": "0007_diners_config_table",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1777359536750,
+      "tag": "0008_polite_silver_fox",
+      "breakpoints": true
     }
   ]
 }

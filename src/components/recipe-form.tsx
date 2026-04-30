@@ -42,6 +42,7 @@ type FormState = {
   weight: number;
   season: Season;
   allowedSlots: Set<SlotKey>;
+  excludedSlots: Set<SlotKey>;
   ingredients: Array<{ name: string; quantity: string }>;
   preferences: Record<Diner, Preference>;
 };
@@ -66,6 +67,7 @@ function emptyState(diners: Diner[]): FormState {
     weight: 3,
     season: "all",
     allowedSlots: new Set(),
+    excludedSlots: new Set(),
     ingredients: [{ name: "", quantity: "" }],
     preferences: defaultPreferences(diners),
   };
@@ -89,6 +91,11 @@ function fromRecipe(r: RecipeWithDetails, diners: Diner[]): FormState {
     season: r.season,
     allowedSlots: new Set(
       r.allowedSlots.map(
+        (s) => `${s.dayOfWeek}|${s.mealType}` as SlotKey
+      )
+    ),
+    excludedSlots: new Set(
+      r.excludedSlots.map(
         (s) => `${s.dayOfWeek}|${s.mealType}` as SlotKey
       )
     ),
@@ -124,6 +131,13 @@ function toRecipeInput(s: FormState, diners: Diner[]): RecipeInput {
       preference: s.preferences[d] ?? "like",
     })),
     allowedSlots: Array.from(s.allowedSlots).map((key) => {
+      const [day, meal] = key.split("|");
+      return {
+        dayOfWeek: parseInt(day, 10),
+        mealType: meal as "lunch" | "dinner",
+      };
+    }),
+    excludedSlots: Array.from(s.excludedSlots).map((key) => {
       const [day, meal] = key.split("|");
       return {
         dayOfWeek: parseInt(day, 10),
@@ -410,9 +424,16 @@ export function RecipeForm({
         </div>
       </div>
 
-      <AllowedSlotsField
-        slots={state.allowedSlots}
-        onChange={(next) => setState((s) => ({ ...s, allowedSlots: next }))}
+      <SlotRestrictionsField
+        allowedSlots={state.allowedSlots}
+        excludedSlots={state.excludedSlots}
+        onChange={(next) =>
+          setState((s) => ({
+            ...s,
+            allowedSlots: next.allowedSlots,
+            excludedSlots: next.excludedSlots,
+          }))
+        }
       />
 
       <div>
@@ -716,20 +737,57 @@ export function RecipeForm({
   );
 }
 
-function AllowedSlotsField({
-  slots,
+type RestrictionMode = "always" | "only" | "except";
+
+function SlotRestrictionsField({
+  allowedSlots,
+  excludedSlots,
   onChange,
 }: {
-  slots: Set<SlotKey>;
-  onChange: (next: Set<SlotKey>) => void;
+  allowedSlots: Set<SlotKey>;
+  excludedSlots: Set<SlotKey>;
+  onChange: (next: {
+    allowedSlots: Set<SlotKey>;
+    excludedSlots: Set<SlotKey>;
+  }) => void;
 }) {
-  const isRestricted = slots.size > 0;
+  // Détermination du mode courant à partir des données.
+  const mode: RestrictionMode =
+    allowedSlots.size > 0 ? "only" : excludedSlots.size > 0 ? "except" : "always";
+
+  const activeSlots = mode === "only" ? allowedSlots : excludedSlots;
+
+  const setMode = (next: RestrictionMode) => {
+    if (next === "always") {
+      onChange({ allowedSlots: new Set(), excludedSlots: new Set() });
+    } else if (next === "only") {
+      // Si on switche depuis "except", on transfère les slots vers allowed
+      const slots = new Set(activeSlots);
+      onChange({ allowedSlots: slots, excludedSlots: new Set() });
+    } else {
+      const slots = new Set(activeSlots);
+      onChange({ allowedSlots: new Set(), excludedSlots: slots });
+    }
+  };
+
+  const updateActiveSlots = (next: Set<SlotKey>) => {
+    if (mode === "only") {
+      onChange({ allowedSlots: next, excludedSlots: new Set() });
+    } else if (mode === "except") {
+      onChange({ allowedSlots: new Set(), excludedSlots: next });
+    }
+  };
 
   const toggleSlot = (key: SlotKey) => {
-    const next = new Set(slots);
+    if (mode === "always") {
+      // Premier clic depuis "always" : on bascule en mode "only" avec ce slot
+      onChange({ allowedSlots: new Set([key]), excludedSlots: new Set() });
+      return;
+    }
+    const next = new Set(activeSlots);
     if (next.has(key)) next.delete(key);
     else next.add(key);
-    onChange(next);
+    updateActiveSlots(next);
   };
 
   const setAll = (lunch: boolean, dinner: boolean) => {
@@ -738,7 +796,11 @@ function AllowedSlotsField({
       if (lunch) next.add(`${day}|lunch`);
       if (dinner) next.add(`${day}|dinner`);
     }
-    onChange(next);
+    if (mode === "always") {
+      onChange({ allowedSlots: next, excludedSlots: new Set() });
+    } else {
+      updateActiveSlots(next);
+    }
   };
 
   const setWeekendOnly = () => {
@@ -747,42 +809,81 @@ function AllowedSlotsField({
       next.add(`${day}|lunch`);
       next.add(`${day}|dinner`);
     }
-    onChange(next);
+    if (mode === "always") {
+      onChange({ allowedSlots: next, excludedSlots: new Set() });
+    } else {
+      updateActiveSlots(next);
+    }
+  };
+
+  const helperText =
+    mode === "always"
+      ? "Disponible toute la semaine (clique sur un créneau pour restreindre)"
+      : mode === "only"
+      ? `Proposée uniquement sur ${activeSlots.size} créneau${activeSlots.size > 1 ? "x" : ""}`
+      : `Exclue de ${activeSlots.size} créneau${activeSlots.size > 1 ? "x" : ""}`;
+
+  // Couleur des cases selon mode + état (cochée ou non)
+  const getCellClasses = (active: boolean) => {
+    if (mode === "always") {
+      return "bg-primary/10 border-primary/60 text-primary";
+    }
+    if (mode === "only") {
+      return active
+        ? "bg-primary/15 border-primary text-primary font-bold"
+        : "bg-muted/30 border-border text-muted-foreground/40";
+    }
+    // mode === "except"
+    return active
+      ? "bg-danger-soft border-danger text-danger font-bold"
+      : "bg-card border-border text-foreground-soft";
   };
 
   return (
     <div>
       <Label>Disponibilité</Label>
-      <p className="text-xs text-muted-foreground mb-2">
-        {isRestricted
-          ? `Cette recette ne sera proposée que sur ${slots.size} créneau${slots.size > 1 ? "x" : ""}`
-          : "Disponible toute la semaine (cocher pour restreindre)"}
-      </p>
 
-      {isRestricted && (
+      {/* Sélecteur de mode */}
+      <div className="grid grid-cols-3 gap-1 mb-2 p-1 rounded-lg bg-muted/40 border border-border">
+        {(
+          [
+            ["always", "Toujours"],
+            ["only", "Uniquement"],
+            ["except", "Sauf"],
+          ] as const
+        ).map(([m, label]) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => setMode(m)}
+            className={cn(
+              "h-9 rounded-md text-xs font-semibold transition-all",
+              mode === m
+                ? m === "except"
+                  ? "bg-danger-soft text-danger shadow-soft"
+                  : "bg-card text-primary shadow-soft"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <p className="text-xs text-muted-foreground mb-2">{helperText}</p>
+
+      {mode !== "always" && (
         <div className="flex flex-wrap gap-1.5 mb-2">
-          <QuickAction onClick={() => onChange(new Set())}>
-            Aucune restriction
-          </QuickAction>
           <QuickAction onClick={() => setAll(false, true)}>
-            Soir uniquement
+            Soir
           </QuickAction>
           <QuickAction onClick={() => setAll(true, false)}>
-            Midi uniquement
+            Midi
           </QuickAction>
           <QuickAction onClick={setWeekendOnly}>Weekend</QuickAction>
-        </div>
-      )}
-
-      {!isRestricted && (
-        <div className="flex flex-wrap gap-1.5 mb-2">
-          <QuickAction onClick={() => setAll(false, true)}>
-            Soir uniquement
+          <QuickAction onClick={() => updateActiveSlots(new Set())}>
+            Vider
           </QuickAction>
-          <QuickAction onClick={() => setAll(true, false)}>
-            Midi uniquement
-          </QuickAction>
-          <QuickAction onClick={setWeekendOnly}>Weekend</QuickAction>
         </div>
       )}
 
@@ -805,22 +906,30 @@ function AllowedSlotsField({
           </div>,
           ...DAYS_OF_WEEK.map((day) => {
             const key = `${day}|${meal}` as SlotKey;
-            const active = slots.has(key);
+            const active = activeSlots.has(key);
+            const symbol =
+              mode === "always"
+                ? "·"
+                : mode === "only"
+                ? active
+                  ? "✓"
+                  : "·"
+                : active
+                ? "✕"
+                : "·";
             return (
               <button
                 key={key}
                 type="button"
                 onClick={() => toggleSlot(key)}
                 className={cn(
-                  "h-11 rounded-md border text-xs font-medium transition-colors",
-                  active || !isRestricted
-                    ? "bg-primary/10 border-primary text-primary"
-                    : "bg-muted/30 border-border text-muted-foreground/40"
+                  "h-11 rounded-md border text-sm transition-colors",
+                  getCellClasses(active)
                 )}
                 aria-label={`${DAY_LABELS_SHORT[day]} ${meal === "lunch" ? "midi" : "soir"}`}
                 aria-pressed={active}
               >
-                {active ? "✓" : "·"}
+                {symbol}
               </button>
             );
           }),

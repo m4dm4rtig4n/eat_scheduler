@@ -7,8 +7,13 @@ import type { DayOfWeek } from "@/lib/days";
 
 type MealType = "lunch" | "dinner";
 
-const { recipes, recipeIngredients, recipePreferences, recipeAllowedSlots } =
-  schema;
+const {
+  recipes,
+  recipeIngredients,
+  recipePreferences,
+  recipeAllowedSlots,
+  recipeExcludedSlots,
+} = schema;
 
 export type RecipeWithDetails = {
   id: number;
@@ -37,6 +42,10 @@ export type RecipeWithDetails = {
     dayOfWeek: DayOfWeek;
     mealType: MealType;
   }>;
+  excludedSlots: Array<{
+    dayOfWeek: DayOfWeek;
+    mealType: MealType;
+  }>;
 };
 
 export async function listRecipes(): Promise<RecipeWithDetails[]> {
@@ -48,6 +57,7 @@ export async function listRecipes(): Promise<RecipeWithDetails[]> {
       },
       preferences: true,
       allowedSlots: true,
+      excludedSlots: true,
     },
   });
   return result as RecipeWithDetails[];
@@ -64,6 +74,7 @@ export async function getRecipe(
       },
       preferences: true,
       allowedSlots: true,
+      excludedSlots: true,
     },
   });
   return (result ?? null) as RecipeWithDetails | null;
@@ -112,6 +123,16 @@ export async function createRecipe(
   if (input.allowedSlots.length > 0) {
     await (db as any).insert(recipeAllowedSlots).values(
       input.allowedSlots.map((s) => ({
+        recipeId: created.id,
+        dayOfWeek: s.dayOfWeek,
+        mealType: s.mealType,
+      }))
+    );
+  }
+
+  if (input.excludedSlots.length > 0) {
+    await (db as any).insert(recipeExcludedSlots).values(
+      input.excludedSlots.map((s) => ({
         recipeId: created.id,
         dayOfWeek: s.dayOfWeek,
         mealType: s.mealType,
@@ -180,6 +201,20 @@ export async function updateRecipe(
   if (input.allowedSlots.length > 0) {
     await (db as any).insert(recipeAllowedSlots).values(
       input.allowedSlots.map((s) => ({
+        recipeId: id,
+        dayOfWeek: s.dayOfWeek,
+        mealType: s.mealType,
+      }))
+    );
+  }
+
+  await (db as any)
+    .delete(recipeExcludedSlots)
+    .where(eq(recipeExcludedSlots.recipeId, id));
+
+  if (input.excludedSlots.length > 0) {
+    await (db as any).insert(recipeExcludedSlots).values(
+      input.excludedSlots.map((s) => ({
         recipeId: id,
         dayOfWeek: s.dayOfWeek,
         mealType: s.mealType,

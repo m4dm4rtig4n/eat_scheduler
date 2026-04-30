@@ -42,6 +42,7 @@ export const recipeInputSchema = z.object({
   ingredients: z.array(ingredientInputSchema).default([]),
   preferences: z.array(preferenceInputSchema).default([]),
   allowedSlots: z.array(allowedSlotInputSchema).default([]),
+  excludedSlots: z.array(allowedSlotInputSchema).default([]),
 });
 
 export type RecipeInput = z.infer<typeof recipeInputSchema>;

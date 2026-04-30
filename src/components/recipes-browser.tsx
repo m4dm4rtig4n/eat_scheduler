@@ -39,7 +39,7 @@ import type { RecipeWithDetails } from "@/lib/db/recipes";
  * Ex : "Sam, Dim soir" si tous les slots sont uniquement le soir et concernent samedi+dimanche.
  *      "5 créneaux" sinon (résumé).
  */
-function summarizeAllowedSlots(
+function summarizeSlots(
   slots: RecipeWithDetails["allowedSlots"]
 ): string | null {
   if (slots.length === 0) return null;
@@ -63,8 +63,26 @@ function summarizeAllowedSlots(
   if (dinnerDays.size === 0 && lunchDays.size > 0) {
     return `${fmtDays(lunchDays)} midi`;
   }
-  // Cas mixte : on résume
   return `${slots.length} créneaux`;
+}
+
+type RestrictionBadge = {
+  kind: "allowed" | "excluded";
+  text: string;
+};
+
+function getRestrictionBadge(
+  recipe: RecipeWithDetails
+): RestrictionBadge | null {
+  if (recipe.allowedSlots.length > 0) {
+    const text = summarizeSlots(recipe.allowedSlots);
+    return text ? { kind: "allowed", text } : null;
+  }
+  if (recipe.excludedSlots.length > 0) {
+    const text = summarizeSlots(recipe.excludedSlots);
+    return text ? { kind: "excluded", text: `Sauf ${text}` } : null;
+  }
+  return null;
 }
 
 export function RecipesBrowser({ recipes }: { recipes: RecipeWithDetails[] }) {
@@ -128,6 +146,7 @@ function RecipeCard({ recipe }: { recipe: RecipeWithDetails }) {
     recipe.preferences.map((p) => [p.diner, p.preference])
   );
   const totalTime = (recipe.prepTime ?? 0) + (recipe.cookTime ?? 0);
+  const restrictionBadge = getRestrictionBadge(recipe);
 
   return (
     <Link
@@ -174,10 +193,17 @@ function RecipeCard({ recipe }: { recipe: RecipeWithDetails }) {
               <ChefHat className="size-3.5" />
               {recipe.ingredients.length} ingr.
             </span>
-            {summarizeAllowedSlots(recipe.allowedSlots) && (
-              <span className="inline-flex items-center gap-1 text-primary font-medium">
+            {restrictionBadge && (
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1 font-medium",
+                  restrictionBadge.kind === "allowed"
+                    ? "text-primary"
+                    : "text-danger"
+                )}
+              >
                 <CalendarRange className="size-3.5" />
-                {summarizeAllowedSlots(recipe.allowedSlots)}
+                {restrictionBadge.text}
               </span>
             )}
           </div>

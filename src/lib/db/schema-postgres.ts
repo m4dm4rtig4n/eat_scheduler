@@ -68,6 +68,22 @@ export const recipeAllowedSlots = pgTable(
   })
 );
 
+export const recipeExcludedSlots = pgTable(
+  "recipe_excluded_slots",
+  {
+    recipeId: integer("recipe_id")
+      .notNull()
+      .references(() => recipes.id, { onDelete: "cascade" }),
+    dayOfWeek: integer("day_of_week").notNull(),
+    mealType: text("meal_type").notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({
+      columns: [table.recipeId, table.dayOfWeek, table.mealType],
+    }),
+  })
+);
+
 export const slotFavorites = pgTable(
   "slot_favorites",
   {
@@ -114,6 +130,7 @@ export const recipesRelations = relations(recipes, ({ many }) => ({
   meals: many(plannedMeals),
   slotFavorites: many(slotFavorites),
   allowedSlots: many(recipeAllowedSlots),
+  excludedSlots: many(recipeExcludedSlots),
 }));
 
 export const recipeAllowedSlotsRelations = relations(
@@ -121,6 +138,16 @@ export const recipeAllowedSlotsRelations = relations(
   ({ one }) => ({
     recipe: one(recipes, {
       fields: [recipeAllowedSlots.recipeId],
+      references: [recipes.id],
+    }),
+  })
+);
+
+export const recipeExcludedSlotsRelations = relations(
+  recipeExcludedSlots,
+  ({ one }) => ({
+    recipe: one(recipes, {
+      fields: [recipeExcludedSlots.recipeId],
       references: [recipes.id],
     }),
   })

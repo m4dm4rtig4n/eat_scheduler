@@ -167,6 +167,7 @@ export async function parseRecipeFromUrl(url: string): Promise<RecipeInput> {
     weight: 3,
     season: "all",
     allowedSlots: [],
+    excludedSlots: [],
     ingredients: ingredientsLines.map((line, position) => {
       const { name: iName, quantity } = splitIngredientLine(
         decodeHtmlEntities(line)
