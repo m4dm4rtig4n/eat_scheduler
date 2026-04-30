@@ -90,7 +90,6 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest
-            type=raw,value=v${{ env.VERSION }}
             type=semver,pattern={{version}},value=v${{ env.VERSION }}
             type=semver,pattern={{major}}.{{minor}},value=v${{ env.VERSION }}
             type=semver,pattern={{major}},value=v${{ env.VERSION }}
@@ -217,7 +216,6 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest
-            type=raw,value=v${{ env.VERSION }}
             type=semver,pattern={{version}},value=v${{ env.VERSION }}
             type=semver,pattern={{major}}.{{minor}},value=v${{ env.VERSION }}
             type=semver,pattern={{major}},value=v${{ env.VERSION }}
@@ -229,7 +227,7 @@ jobs:
             $(printf "${REGISTRY}/${IMAGE_NAME}@sha256:%s " *)
 
       - name: Inspect promoted image
-        run: docker buildx imagetools inspect "${REGISTRY}/${IMAGE_NAME}:v${VERSION}"
+        run: docker buildx imagetools inspect "${REGISTRY}/${IMAGE_NAME}:${VERSION}"
 
   helm-publish:
     name: Package & Push Helm chart
