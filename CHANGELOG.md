@@ -1,3 +1,9 @@
+## [1.1.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.0.1...v1.1.0) (2026-04-30)
+
+### Features
+
+* **slots:** add support for excluded slots in recipes and update related components ([64a307b](https://github.com/m4dm4rtig4n/eat_scheduler/commit/64a307ba531714d18cbe645546263e8d2b4a96d8))
+
 ## [1.0.1](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.0.0...v1.0.1) (2026-04-27)
 
 ### Bug Fixes
