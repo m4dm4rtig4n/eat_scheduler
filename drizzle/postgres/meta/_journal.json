@@ -8,6 +8,13 @@
       "when": 1777309629939,
       "tag": "0000_slimy_adam_warlock",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1777564580973,
+      "tag": "0001_legal_felicia_hardy",
+      "breakpoints": true
     }
   ]
 }
