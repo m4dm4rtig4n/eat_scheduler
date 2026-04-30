@@ -1,3 +1,9 @@
+## [1.2.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.1.0...v1.2.0) (2026-04-30)
+
+### Features
+
+* **database:** add recipe_excluded_slots table and update journal metadata ([6fd383e](https://github.com/m4dm4rtig4n/eat_scheduler/commit/6fd383e84366ea4bb804e00992fd684fe6585cf2))
+
 ## [1.1.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.0.1...v1.1.0) (2026-04-30)
 
 ### Features
