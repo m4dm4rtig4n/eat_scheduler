@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { BottomNav } from "@/components/bottom-nav";
+import { SideNav } from "@/components/side-nav";
 import { SWRegister } from "@/components/sw-register";
 import { DinersProvider } from "@/components/diners-provider";
 import { listDiners } from "@/lib/db/diners";
@@ -53,10 +54,13 @@ export default async function RootLayout({
       lang="fr"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col overflow-x-hidden">
+      <body className="min-h-full flex flex-col md:flex-row overflow-x-hidden">
         <DinersProvider initialDiners={initialDiners}>
-          <main className="flex-1 max-w-2xl w-full mx-auto pb-28 min-w-0">
-            {children}
+          <SideNav />
+          <main className="flex-1 w-full pb-28 md:pb-8 min-w-0 md:max-w-none">
+            <div className="w-full max-w-2xl mx-auto md:max-w-none md:mx-0 md:px-2">
+              {children}
+            </div>
           </main>
           <BottomNav />
         </DinersProvider>

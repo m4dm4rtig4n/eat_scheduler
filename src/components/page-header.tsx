@@ -13,7 +13,7 @@ export function PageHeader({
 }) {
   return (
     <header className="sticky top-0 z-30 bg-background/85 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70 border-b border-border/70">
-      <div className="flex items-center justify-between gap-3 px-4 py-3.5 max-w-2xl mx-auto">
+      <div className="flex items-center justify-between gap-3 px-4 py-3.5 max-w-2xl mx-auto md:max-w-none md:mx-0">
         <div className="flex items-center gap-2 min-w-0">
           {back}
           <div className="min-w-0">

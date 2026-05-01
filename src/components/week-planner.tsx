@@ -454,7 +454,7 @@ export function WeekPlanner({
         </Button>
       </div>
 
-      <ul className="space-y-3">
+      <ul className="space-y-3 lg:space-y-0 lg:grid lg:grid-cols-7 lg:gap-3">
         {upcomingDays.map((day) => {
           const dateISO = formatDateISO(day);
           const isToday = todayISO === dateISO;
@@ -464,7 +464,7 @@ export function WeekPlanner({
             <li
               key={dateISO}
               className={cn(
-                "rounded-[var(--radius-lg)] overflow-hidden transition-all",
+                "rounded-[var(--radius-lg)] overflow-hidden transition-all lg:flex lg:flex-col",
                 isToday
                   ? "bg-card shadow-lift ring-2 ring-primary/40"
                   : "bg-card border border-border shadow-soft"
@@ -472,7 +472,7 @@ export function WeekPlanner({
             >
               <div
                 className={cn(
-                  "relative flex items-center gap-3 px-3 sm:px-4 py-2.5 sm:py-3.5",
+                  "relative flex items-center gap-3 px-3 sm:px-4 py-2.5 sm:py-3.5 lg:flex-col lg:items-start lg:gap-2 lg:px-3 lg:py-3",
                   isToday
                     ? "bg-gradient-to-r from-primary to-primary-hover text-primary-foreground"
                     : "bg-card-warm border-b border-border"
@@ -527,7 +527,7 @@ export function WeekPlanner({
                 </div>
               </div>
 
-              <div className="divide-y divide-border">
+              <div className="divide-y divide-border lg:flex-1">
                 {(["lunch", "dinner"] as MealSlot[]).map((slot) => {
                   const slotMeals = findMeals(dateISO, slot);
                   const meta = SLOT_META[slot];
@@ -535,11 +535,11 @@ export function WeekPlanner({
                   return (
                     <div
                       key={slot}
-                      className="flex items-stretch gap-2 sm:gap-3 px-2 sm:px-3 py-3"
+                      className="flex items-stretch gap-2 sm:gap-3 px-2 sm:px-3 py-3 lg:flex-col lg:gap-2 lg:px-2"
                     >
                       <div
                         className={cn(
-                          "flex flex-col items-center justify-start gap-1 pt-1 w-10 sm:w-12 shrink-0"
+                          "flex flex-col items-center justify-start gap-1 pt-1 w-10 sm:w-12 shrink-0 lg:flex-row lg:w-auto lg:pt-0 lg:items-center"
                         )}
                       >
                         <div

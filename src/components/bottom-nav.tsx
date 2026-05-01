@@ -16,7 +16,7 @@ export function BottomNav() {
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-40 px-3 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 pointer-events-none"
+      className="md:hidden fixed bottom-0 left-0 right-0 z-40 px-3 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 pointer-events-none"
       aria-label="Navigation principale"
     >
       <div className="pointer-events-auto max-w-md mx-auto rounded-[var(--radius-lg)] border border-border-strong/60 bg-card/85 backdrop-blur-xl shadow-lift">

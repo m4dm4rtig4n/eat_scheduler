@@ -127,7 +127,7 @@ export function RecipesBrowser({ recipes }: { recipes: RecipeWithDetails[] }) {
           onReset={() => setFilters(emptyRecipeFilters())}
         />
       ) : (
-        <ul className="space-y-3">
+        <ul className="space-y-3 md:space-y-0 md:grid md:grid-cols-2 md:gap-3 lg:grid-cols-3 xl:grid-cols-4">
           {filtered.map((recipe) => (
             <li key={recipe.id}>
               <RecipeCard recipe={recipe} />
