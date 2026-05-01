@@ -472,7 +472,7 @@ export function WeekPlanner({
             >
               <div
                 className={cn(
-                  "relative flex items-center gap-4 px-4 py-3.5",
+                  "relative flex items-center gap-3 px-3 sm:px-4 py-2.5 sm:py-3.5",
                   isToday
                     ? "bg-gradient-to-r from-primary to-primary-hover text-primary-foreground"
                     : "bg-card-warm border-b border-border"
@@ -480,7 +480,7 @@ export function WeekPlanner({
               >
                 <div
                   className={cn(
-                    "flex flex-col items-center justify-center size-16 rounded-2xl shrink-0 leading-none shadow-soft",
+                    "flex flex-col items-center justify-center size-12 sm:size-16 rounded-xl sm:rounded-2xl shrink-0 leading-none shadow-soft",
                     isToday
                       ? "bg-white/25 backdrop-blur ring-2 ring-white/40"
                       : "bg-background border border-border-strong"
@@ -488,13 +488,13 @@ export function WeekPlanner({
                 >
                   <span
                     className={cn(
-                      "text-[10px] font-bold uppercase tracking-[0.18em] leading-none",
+                      "text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.18em] leading-none",
                       isToday ? "opacity-90" : "text-primary"
                     )}
                   >
                     {day.toLocaleDateString("fr-FR", { month: "short" }).replace(".", "")}
                   </span>
-                  <span className="text-3xl font-black tabular-nums leading-none mt-1">
+                  <span className="text-xl sm:text-3xl font-black tabular-nums leading-none mt-0.5 sm:mt-1">
                     {day.getDate()}
                   </span>
                 </div>
@@ -507,7 +507,7 @@ export function WeekPlanner({
                   )}
                   <p
                     className={cn(
-                      "font-black text-2xl leading-tight tracking-tight capitalize",
+                      "font-black text-lg sm:text-2xl leading-tight tracking-tight capitalize truncate",
                       isToday ? "text-primary-foreground" : "text-foreground"
                     )}
                   >
@@ -515,7 +515,7 @@ export function WeekPlanner({
                   </p>
                   <p
                     className={cn(
-                      "text-[11px] uppercase tracking-[0.18em] font-semibold mt-0.5",
+                      "text-[10px] sm:text-[11px] uppercase tracking-[0.18em] font-semibold mt-0.5 truncate",
                       isToday ? "opacity-80" : "text-muted-foreground"
                     )}
                   >
@@ -535,11 +535,11 @@ export function WeekPlanner({
                   return (
                     <div
                       key={slot}
-                      className="flex items-stretch gap-3 px-3 py-3"
+                      className="flex items-stretch gap-2 sm:gap-3 px-2 sm:px-3 py-3"
                     >
                       <div
                         className={cn(
-                          "flex flex-col items-center justify-start gap-1 pt-1 w-12 shrink-0"
+                          "flex flex-col items-center justify-start gap-1 pt-1 w-10 sm:w-12 shrink-0"
                         )}
                       >
                         <div
@@ -718,9 +718,9 @@ export function WeekPlanner({
                         return (
                           <div
                             key={slot}
-                            className="flex items-stretch gap-3 px-3 py-3"
+                            className="flex items-stretch gap-2 sm:gap-3 px-2 sm:px-3 py-3"
                           >
-                            <div className="flex flex-col items-center justify-start gap-1 pt-1 w-12 shrink-0">
+                            <div className="flex flex-col items-center justify-start gap-1 pt-1 w-10 sm:w-12 shrink-0">
                               <div
                                 className={cn(
                                   "flex items-center justify-center size-8 rounded-full ring-1",
@@ -814,7 +814,7 @@ function MealThumbnail({
 }) {
   if (imageUrl) {
     return (
-      <div className="relative size-20 rounded-lg overflow-hidden shrink-0 bg-muted ring-1 ring-border">
+      <div className="relative size-16 sm:size-20 rounded-lg overflow-hidden shrink-0 bg-muted ring-1 ring-border">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={imageUrl}
@@ -828,7 +828,7 @@ function MealThumbnail({
   // Fallback : initiale du plat sur fond gradient chaud
   const initial = name.trim().charAt(0).toUpperCase() || "?";
   return (
-    <div className="relative size-20 rounded-lg overflow-hidden shrink-0 bg-gradient-to-br from-primary/20 via-gold-soft to-accent flex items-center justify-center">
+    <div className="relative size-16 sm:size-20 rounded-lg overflow-hidden shrink-0 bg-gradient-to-br from-primary/20 via-gold-soft to-accent flex items-center justify-center">
       <span className="text-3xl font-black text-primary/70">{initial}</span>
     </div>
   );
@@ -887,18 +887,18 @@ function MealCard({
           imageUrl={meal.recipe.imageUrl}
           name={meal.recipe.name}
         />
-        <div className="flex-1 min-w-0 flex flex-col justify-center min-h-20">
+        <div className="flex-1 min-w-0 flex flex-col justify-center min-h-16 sm:min-h-20">
           {canReplace ? (
             <button
               type="button"
               onClick={onReplace}
-              className="text-left text-xl font-bold leading-tight tracking-tight hover:text-primary transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 line-clamp-2"
+              className="text-left text-base sm:text-xl font-bold leading-tight tracking-tight hover:text-primary transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 line-clamp-2 pr-8"
               title="Cliquer pour remplacer ce plat"
             >
               {meal.recipe.name}
             </button>
           ) : (
-            <p className="text-xl font-bold leading-tight tracking-tight line-clamp-2">
+            <p className="text-base sm:text-xl font-bold leading-tight tracking-tight line-clamp-2 pr-8">
               {meal.recipe.name}
             </p>
           )}
@@ -912,7 +912,7 @@ function MealCard({
         </div>
       </div>
 
-      <div className="flex items-center justify-start gap-1.5 flex-wrap px-3 pb-3 pt-1 border-t border-border/60">
+      <div className="flex items-center justify-start gap-1 sm:gap-1.5 flex-wrap px-3 pb-3 pt-1 border-t border-border/60">
         {dinerKeys.map((d) => {
           const isPresent = presentSet.has(d);
           const coef = dinerCoefficient(dinersConfig, d);
@@ -924,7 +924,7 @@ function MealCard({
               disabled={readOnly}
               onClick={() => onToggleDiner(d)}
               className={cn(
-                "group/diner relative inline-flex items-center gap-1.5 px-2 h-8 rounded-full border text-xs font-medium transition-all",
+                "group/diner relative inline-flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 h-8 rounded-full border text-xs font-medium transition-all",
                 isPresent
                   ? "bg-card border-border-strong shadow-soft"
                   : "bg-muted/40 border-transparent text-muted-foreground/60 grayscale opacity-60 hover:opacity-100",
@@ -942,7 +942,9 @@ function MealCard({
               >
                 {dinerInitials(dinersConfig, d)}
               </span>
-              <span>{dinerLabel(dinersConfig, d)}</span>
+              <span className="hidden sm:inline">
+                {dinerLabel(dinersConfig, d)}
+              </span>
               {coefLabel && (
                 <span className="text-[10px] font-semibold text-muted-foreground tabular-nums">
                   ×{coefLabel}

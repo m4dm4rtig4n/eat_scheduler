@@ -53,9 +53,9 @@ export default async function RootLayout({
       lang="fr"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full flex flex-col overflow-x-hidden">
         <DinersProvider initialDiners={initialDiners}>
-          <main className="flex-1 max-w-2xl w-full mx-auto pb-28">
+          <main className="flex-1 max-w-2xl w-full mx-auto pb-28 min-w-0">
             {children}
           </main>
           <BottomNav />
