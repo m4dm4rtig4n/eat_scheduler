@@ -90,6 +90,9 @@ export const generateMealsSchema = z.object({
     .min(1)
     .default(["lunch", "dinner"]),
   seasonOverride: z.enum(["summer", "winter"]).optional(),
+  // Recettes à exclure du tirage. Utilisé pour la régénération d'un slot :
+  // l'utilisateur veut explicitement remplacer la recette précédente.
+  excludeRecipeIds: z.array(z.coerce.number().int().positive()).optional(),
 });
 
 export type GenerateMealsInput = z.infer<typeof generateMealsSchema>;

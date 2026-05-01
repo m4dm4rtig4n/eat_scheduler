@@ -333,6 +333,12 @@ export function WeekPlanner({
   const regenerateSlot = async (date: string, mealType: MealSlot) => {
     const slotKey = `${date}|${mealType}`;
     setRegeneratingSlot(slotKey);
+    // On exclut explicitement les recettes actuelles du slot pour forcer
+    // le tirage à proposer autre chose. Sinon le générateur peut retomber
+    // sur la même recette à cause du tirage pondéré sur top-K.
+    const excludeRecipeIds = meals
+      .filter((m) => m.date === date && m.mealType === mealType)
+      .map((m) => m.recipeId);
     try {
       const res = await fetch("/api/meals/generate", {
         method: "POST",
@@ -342,6 +348,7 @@ export function WeekPlanner({
           endDate: date,
           mode: "replace",
           mealTypes: [mealType],
+          excludeRecipeIds,
         }),
       });
       if (!res.ok) {
@@ -388,6 +395,24 @@ export function WeekPlanner({
     ? `${weekStart.getDate()} – ${weekEnd.getDate()} ${weekEnd.toLocaleDateString("fr-FR", { month: "long" })}`
     : `${weekStart.getDate()} ${weekStart.toLocaleDateString("fr-FR", { month: "short" })} – ${weekEnd.getDate()} ${weekEnd.toLocaleDateString("fr-FR", { month: "short" })}`;
 
+  // Détection des "raccourcis" pour mettre en évidence la card active
+  const currentWeekStart = startOfWeek(new Date());
+  const nextWeekStart = addDays(currentWeekStart, 7);
+  const currentWeekStartISO = formatDateISO(currentWeekStart);
+  const weekStartISO = formatDateISO(weekStart);
+  const isCurrentWeek = weekStartISO === currentWeekStartISO;
+  const isNextWeek = weekStartISO === formatDateISO(nextWeekStart);
+
+  const formatWeekRange = (start: Date) => {
+    const end = addDays(start, 6);
+    const sameMonth = start.getMonth() === end.getMonth();
+    return sameMonth
+      ? `${start.getDate()} – ${end.getDate()} ${end.toLocaleDateString("fr-FR", { month: "short" })}`
+      : `${start.getDate()} ${start.toLocaleDateString("fr-FR", { month: "short" })} – ${end.getDate()} ${end.toLocaleDateString("fr-FR", { month: "short" })}`;
+  };
+  const currentWeekRange = formatWeekRange(currentWeekStart);
+  const nextWeekRange = formatWeekRange(nextWeekStart);
+
   const totalMeals = meals.length;
   const filledSlots = new Set(meals.map((m) => `${m.date}-${m.mealType}`)).size;
 
@@ -409,12 +434,6 @@ export function WeekPlanner({
           <p className="text-lg font-black capitalize leading-tight tracking-tight truncate">
             {weekRangeLabel}
           </p>
-          <button
-            onClick={() => setWeekStart(startOfWeek(new Date()))}
-            className="text-[11px] text-primary hover:underline font-semibold mt-0.5"
-          >
-            Aller à aujourd'hui
-          </button>
         </div>
         <Button
           variant="ghost"
@@ -424,6 +443,55 @@ export function WeekPlanner({
         >
           <ChevronRight className="size-5" />
         </Button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 mb-4">
+        <button
+          type="button"
+          onClick={() => setWeekStart(currentWeekStart)}
+          aria-pressed={isCurrentWeek}
+          className={cn(
+            "rounded-[var(--radius-lg)] px-3 py-2.5 text-center transition-all border shadow-soft",
+            isCurrentWeek
+              ? "bg-gradient-to-br from-primary to-primary-hover text-primary-foreground border-primary shadow-lift"
+              : "bg-card-warm border-border hover:border-border-strong hover:bg-card"
+          )}
+        >
+          <p
+            className={cn(
+              "text-[10px] font-bold uppercase tracking-[0.18em]",
+              isCurrentWeek ? "opacity-90" : "text-primary"
+            )}
+          >
+            Cette semaine
+          </p>
+          <p className="text-sm font-bold tracking-tight truncate mt-0.5">
+            {currentWeekRange}
+          </p>
+        </button>
+        <button
+          type="button"
+          onClick={() => setWeekStart(nextWeekStart)}
+          aria-pressed={isNextWeek}
+          className={cn(
+            "rounded-[var(--radius-lg)] px-3 py-2.5 text-center transition-all border shadow-soft",
+            isNextWeek
+              ? "bg-gradient-to-br from-primary to-primary-hover text-primary-foreground border-primary shadow-lift"
+              : "bg-card-warm border-border hover:border-border-strong hover:bg-card"
+          )}
+        >
+          <p
+            className={cn(
+              "text-[10px] font-bold uppercase tracking-[0.18em]",
+              isNextWeek ? "opacity-90" : "text-primary"
+            )}
+          >
+            Semaine prochaine
+          </p>
+          <p className="text-sm font-bold tracking-tight truncate mt-0.5">
+            {nextWeekRange}
+          </p>
+        </button>
       </div>
 
       {totalMeals > 0 && (
@@ -487,9 +555,40 @@ export function WeekPlanner({
                 isPast && "lg:opacity-60 lg:saturate-50"
               )}
             >
+              {/* Header compact desktop : 1 ligne "Lun 4 mai" */}
               <div
                 className={cn(
-                  "relative flex items-center gap-3 px-3 sm:px-4 py-2.5 sm:py-3.5 lg:flex-col lg:items-start lg:gap-2 lg:px-3 lg:py-3",
+                  "hidden lg:flex items-baseline gap-1.5 px-3 py-2.5",
+                  isToday
+                    ? "bg-gradient-to-r from-primary to-primary-hover text-primary-foreground"
+                    : "bg-card-warm border-b border-border"
+                )}
+              >
+                <span
+                  className={cn(
+                    "font-black text-base tracking-tight capitalize truncate",
+                    isToday ? "text-primary-foreground" : "text-foreground"
+                  )}
+                >
+                  {day.toLocaleDateString("fr-FR", { weekday: "short" }).replace(".", "")}
+                </span>
+                <span
+                  className={cn(
+                    "text-xs font-semibold tabular-nums truncate",
+                    isToday ? "opacity-90" : "text-muted-foreground"
+                  )}
+                >
+                  {day.getDate()}{" "}
+                  {day
+                    .toLocaleDateString("fr-FR", { month: "short" })
+                    .replace(".", "")}
+                </span>
+              </div>
+
+              {/* Header détaillé mobile+tablette : badge date + nom du jour */}
+              <div
+                className={cn(
+                  "relative flex lg:hidden items-center gap-3 px-3 sm:px-4 py-2.5 sm:py-3.5",
                   isToday
                     ? "bg-gradient-to-r from-primary to-primary-hover text-primary-foreground"
                     : "bg-card-warm border-b border-border"

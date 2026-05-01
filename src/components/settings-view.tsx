@@ -1,16 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Plus,
   X,
   Check,
-  Pencil,
   Trash2,
   ArrowUp,
   ArrowDown,
   RotateCcw,
   Users,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
@@ -138,6 +138,7 @@ export function SettingsView({
                       setEditingId(null);
                       reload();
                     }}
+                    onAutoSaved={reload}
                   />
                 ) : (
                   <DinerRow
@@ -238,8 +239,27 @@ function DinerRow({
   onEdit: () => void;
   onArchive: () => void;
 }) {
+  // Empêche les boutons enfants de déclencher l'edit de la card parente
+  const stop = (fn: () => void) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    fn();
+  };
+
   return (
-    <div className="flex items-center gap-3 p-3 bg-card border border-border rounded-[var(--radius-lg)] shadow-soft">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onEdit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onEdit();
+        }
+      }}
+      className="group flex items-center gap-1 sm:gap-2 p-3 bg-card border border-border rounded-[var(--radius-lg)] shadow-soft hover:border-border-strong hover:bg-muted/30 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+      aria-label={`Modifier ${diner.label}`}
+      title="Cliquer pour modifier"
+    >
       <span
         className={cn(
           "inline-flex items-center justify-center size-10 rounded-full text-sm font-bold text-white shrink-0",
@@ -248,15 +268,19 @@ function DinerRow({
       >
         {diner.initials}
       </span>
-      <div className="flex-1 min-w-0">
-        <p className="font-bold leading-tight truncate">{diner.label}</p>
+      <div className="flex-1 min-w-0 ml-2">
+        <p className="font-bold leading-tight truncate group-hover:text-primary transition-colors">
+          {diner.label}
+        </p>
         <p className="text-xs text-muted-foreground">
           Coefficient ×{diner.coefficient}
         </p>
       </div>
+
       <div className="flex flex-col shrink-0">
         <button
-          onClick={onMoveUp}
+          type="button"
+          onClick={stop(onMoveUp)}
           disabled={!canMoveUp}
           className="h-9 w-11 inline-flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
           aria-label="Monter"
@@ -264,7 +288,8 @@ function DinerRow({
           <ArrowUp className="size-4" />
         </button>
         <button
-          onClick={onMoveDown}
+          type="button"
+          onClick={stop(onMoveDown)}
           disabled={!canMoveDown}
           className="h-9 w-11 inline-flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
           aria-label="Descendre"
@@ -273,14 +298,8 @@ function DinerRow({
         </button>
       </div>
       <button
-        onClick={onEdit}
-        className="size-9 inline-flex items-center justify-center rounded-lg text-muted-foreground hover:text-primary hover:bg-primary-soft/40 transition-colors shrink-0"
-        aria-label="Modifier"
-      >
-        <Pencil className="size-4" />
-      </button>
-      <button
-        onClick={onArchive}
+        type="button"
+        onClick={stop(onArchive)}
         className="size-9 inline-flex items-center justify-center rounded-lg text-muted-foreground hover:text-danger hover:bg-danger-soft transition-colors shrink-0"
         aria-label="Archiver"
       >
@@ -306,12 +325,14 @@ function DinerEditor({
   existingKeys,
   onCancel,
   onSaved,
+  onAutoSaved,
 }: {
   mode: "create" | "edit";
   diner?: FullDiner;
   existingKeys: string[];
   onCancel: () => void;
-  onSaved: () => void;
+  onSaved: () => void; // appelé une fois (création) ou à la fermeture
+  onAutoSaved?: () => void; // sync léger après chaque auto-save (sans fermer)
 }) {
   const [label, setLabel] = useState(diner?.label ?? "");
   const [initials, setInitials] = useState(diner?.initials ?? "");
@@ -330,6 +351,10 @@ function DinerEditor({
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Indicateur d'auto-save (mode edit uniquement). "idle" / "saving" / "saved"
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">(
+    "idle"
+  );
 
   const togglePresence = (dayOfWeek: number, mealType: "lunch" | "dinner") => {
     const k = `${dayOfWeek}|${mealType}`;
@@ -355,6 +380,60 @@ function DinerEditor({
         : a.mealType.localeCompare(b.mealType)
     );
 
+  // ----- Auto-save (mode edit uniquement) -----
+  // Évite de patcher au tout premier render (les valeurs initiales = celles du serveur)
+  const isFirstRender = useRef(true);
+  // Timer de debounce pour les changements rapides (label, coef, initiales)
+  const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (mode !== "edit" || !diner) return;
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    // Validation locale avant de tenter la sauvegarde
+    if (!label.trim() || !initials.trim()) return;
+
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(async () => {
+      setSaveState("saving");
+      setError(null);
+      try {
+        const res = await fetch(`/api/diners/${diner.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            label: label.trim(),
+            initials: initials.trim(),
+            colorKey,
+            coefficient,
+            unavailableSlots,
+          }),
+        });
+        if (!res.ok) {
+          setError("Erreur lors de l'enregistrement");
+          setSaveState("idle");
+          return;
+        }
+        setSaveState("saved");
+        // Sync léger : rafraîchit la liste parente sans fermer l'éditeur.
+        // (onSaved fermerait l'éditeur, ce n'est pas ce qu'on veut ici.)
+        onAutoSaved?.();
+        // Repasse en idle après 1.5s pour ne pas bloquer le badge "✓ Enregistré"
+        setTimeout(() => setSaveState("idle"), 1500);
+      } catch {
+        setError("Erreur réseau");
+        setSaveState("idle");
+      }
+    }, 400);
+
+    return () => {
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [label, initials, colorKey, coefficient, unavailable]);
+
   // Auto-générer les initiales si label change et créateur n'a pas saisi
   const onLabelChange = (v: string) => {
     setLabel(v);
@@ -369,67 +448,49 @@ function DinerEditor({
     }
   };
 
-  const submit = async () => {
+  // Création explicite (mode "create") — l'auto-save n'a pas de sens ici
+  // tant que l'entité n'existe pas en DB.
+  const submitCreate = async () => {
     setError(null);
     if (!label.trim()) return setError("Nom requis");
     if (!initials.trim()) return setError("Initiales requises");
 
     setSubmitting(true);
     try {
-      if (mode === "create") {
-        let key = slugify(label);
-        if (!key) {
-          setError("Nom invalide");
-          return;
-        }
-        // collision: ajouter un suffixe numérique
-        let i = 2;
-        while (existingKeys.includes(key)) {
-          key = `${slugify(label)}-${i++}`;
-        }
-        const createRes = await fetch("/api/diners", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            key,
-            label: label.trim(),
-            initials: initials.trim(),
-            colorKey,
-            coefficient,
-          }),
-        });
-        if (!createRes.ok) {
-          const err = await createRes.json().catch(() => ({}));
-          setError(err.error ?? "Erreur");
-          return;
-        }
-        // Si l'utilisateur a déjà configuré des indispos pendant la création,
-        // on les pousse via PATCH après création (POST n'accepte pas ce champ
-        // pour rester compatible avec le flux existant).
-        if (unavailableSlots.length > 0) {
-          const created: { id: number } = await createRes.json();
-          await fetch(`/api/diners/${created.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ unavailableSlots }),
-          });
-        }
-      } else if (diner) {
-        const res = await fetch(`/api/diners/${diner.id}`, {
+      let key = slugify(label);
+      if (!key) {
+        setError("Nom invalide");
+        return;
+      }
+      // collision: ajouter un suffixe numérique
+      let i = 2;
+      while (existingKeys.includes(key)) {
+        key = `${slugify(label)}-${i++}`;
+      }
+      const createRes = await fetch("/api/diners", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key,
+          label: label.trim(),
+          initials: initials.trim(),
+          colorKey,
+          coefficient,
+        }),
+      });
+      if (!createRes.ok) {
+        const err = await createRes.json().catch(() => ({}));
+        setError(err.error ?? "Erreur");
+        return;
+      }
+      // Indispos saisies pendant la création : on les pousse via PATCH
+      if (unavailableSlots.length > 0) {
+        const created: { id: number } = await createRes.json();
+        await fetch(`/api/diners/${created.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            label: label.trim(),
-            initials: initials.trim(),
-            colorKey,
-            coefficient,
-            unavailableSlots,
-          }),
+          body: JSON.stringify({ unavailableSlots }),
         });
-        if (!res.ok) {
-          setError("Erreur lors de l'enregistrement");
-          return;
-        }
       }
       onSaved();
     } finally {
@@ -525,7 +586,6 @@ function DinerEditor({
       <PresenceGrid
         unavailable={unavailable}
         onToggle={togglePresence}
-        accentBg={COLOR_BG[colorKey]}
       />
 
       {error && (
@@ -534,28 +594,59 @@ function DinerEditor({
         </p>
       )}
 
-      <div className="flex gap-2">
-        <Button
-          variant="outline"
-          size="md"
-          className="flex-1"
-          onClick={onCancel}
-          disabled={submitting}
-        >
-          <X className="size-4" />
-          Annuler
-        </Button>
-        <Button
-          variant="primary"
-          size="md"
-          className="flex-1"
-          onClick={submit}
-          disabled={submitting}
-        >
-          <Check className="size-4" />
-          Enregistrer
-        </Button>
-      </div>
+      {mode === "edit" ? (
+        <div className="flex items-center justify-between gap-2 pt-1">
+          <span
+            className={cn(
+              "inline-flex items-center gap-1.5 text-xs font-medium transition-opacity",
+              saveState === "idle" && "opacity-0"
+            )}
+            aria-live="polite"
+          >
+            {saveState === "saving" && (
+              <>
+                <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
+                <span className="text-muted-foreground">Enregistrement…</span>
+              </>
+            )}
+            {saveState === "saved" && (
+              <>
+                <Check className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span className="text-emerald-700 dark:text-emerald-400">
+                  Enregistré
+                </span>
+              </>
+            )}
+          </span>
+          <Button variant="outline" size="md" onClick={onCancel}>
+            <X className="size-4" />
+            Fermer
+          </Button>
+        </div>
+      ) : (
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="md"
+            className="flex-1"
+            onClick={onCancel}
+            disabled={submitting}
+          >
+            <X className="size-4" />
+            Annuler
+          </Button>
+          <Button
+            variant="primary"
+            size="md"
+            className="flex-1"
+            onClick={submitCreate}
+            disabled={submitting}
+          >
+            <Check className="size-4" />
+            Créer
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -574,11 +665,9 @@ function DinerEditor({
 function PresenceGrid({
   unavailable,
   onToggle,
-  accentBg,
 }: {
   unavailable: Set<string>;
   onToggle: (dayOfWeek: number, mealType: "lunch" | "dinner") => void;
-  accentBg: string;
 }) {
   const days: DayOfWeek[] = [0, 1, 2, 3, 4, 5, 6];
   const slots: Array<{ key: "lunch" | "dinner"; label: string }> = [
@@ -592,21 +681,24 @@ function PresenceGrid({
   return (
     <div>
       <Label>Présence par défaut</Label>
-      <div className="rounded-lg border border-border overflow-hidden">
-        <div className="grid grid-cols-[auto_repeat(7,minmax(0,1fr))] text-[10px] uppercase tracking-wider font-bold text-muted-foreground bg-muted/40">
-          <div className="px-2 py-1.5" />
+      <div className="rounded-lg border border-border-strong overflow-hidden shadow-soft">
+        <div className="grid grid-cols-[auto_repeat(7,minmax(0,1fr))] text-[10px] uppercase tracking-wider font-bold text-foreground-soft bg-card-warm border-b border-border-strong">
+          <div className="px-2 py-2" />
           {days.map((d) => (
-            <div key={d} className="px-1 py-1.5 text-center">
+            <div key={d} className="px-1 py-2 text-center border-l border-border/60">
               {DAY_LABELS_SHORT[d]}
             </div>
           ))}
         </div>
-        {slots.map((slot) => (
+        {slots.map((slot, slotIdx) => (
           <div
             key={slot.key}
-            className="grid grid-cols-[auto_repeat(7,minmax(0,1fr))] border-t border-border"
+            className={cn(
+              "grid grid-cols-[auto_repeat(7,minmax(0,1fr))]",
+              slotIdx > 0 && "border-t border-border"
+            )}
           >
-            <div className="px-2 py-2 text-[11px] font-semibold text-muted-foreground flex items-center">
+            <div className="px-2 py-2 text-[11px] font-bold text-foreground-soft flex items-center bg-card-warm/60 border-r border-border/60">
               {slot.label}
             </div>
             {days.map((d) => {
@@ -617,23 +709,41 @@ function PresenceGrid({
                   type="button"
                   onClick={() => onToggle(d, slot.key)}
                   className={cn(
-                    "h-9 flex items-center justify-center transition-colors border-l border-border",
+                    "h-10 flex items-center justify-center transition-colors border-l border-border/60 cursor-pointer",
                     present
-                      ? cn(accentBg, "text-white hover:opacity-90")
-                      : "bg-background text-muted-foreground/40 hover:bg-muted"
+                      ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-950/50"
+                      : "bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/50"
                   )}
                   aria-pressed={present}
                   aria-label={`${slot.label} ${DAY_LABELS_SHORT[d]} : ${
                     present ? "présent" : "absent"
                   }`}
-                  title={present ? "Présent" : "Absent"}
+                  title={present ? "Présent — cliquer pour marquer absent" : "Absent — cliquer pour marquer présent"}
                 >
-                  {present ? <Check className="size-3.5" /> : <X className="size-3.5" />}
+                  {present ? (
+                    <Check className="size-4" strokeWidth={3} />
+                  ) : (
+                    <X className="size-4" strokeWidth={2.5} />
+                  )}
                 </button>
               );
             })}
           </div>
         ))}
+      </div>
+      <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-flex items-center justify-center size-3.5 rounded-sm bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400">
+            <Check className="size-2.5" strokeWidth={3} />
+          </span>
+          Présent
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-flex items-center justify-center size-3.5 rounded-sm bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400">
+            <X className="size-2.5" strokeWidth={2.5} />
+          </span>
+          Absent
+        </span>
       </div>
       <p className="text-[10px] text-muted-foreground mt-1.5 leading-snug">
         Décoche les créneaux où la personne n'est habituellement pas là (ex.

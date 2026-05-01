@@ -30,6 +30,10 @@ export type GenerationContext = {
   dinerConfigs: DinerConfig[];
   seasonOverride?: "summer" | "winter";
   slotFavorites?: SlotFavorite[];
+  // Recettes à exclure complètement du tirage (use case principal : régénération
+  // d'un slot, où l'utilisateur veut explicitement éviter ce qu'il vient de
+  // remplacer). On filtre AVANT le scoring, donc poids effectif = 0.
+  excludeRecipeIds?: number[];
 };
 
 function getPreference(
@@ -141,6 +145,9 @@ export function generateWeekPlan(
   const allActive = ctx.dinerConfigs.filter((d) => !d.archived);
   if (allActive.length === 0) return [];
 
+  const excluded = new Set(ctx.excludeRecipeIds ?? []);
+  const isExcluded = (id: number) => excluded.has(id);
+
   // Filtre les convives à servir pour un slot donné, en respectant les
   // indisponibilités récurrentes configurées en réglages.
   const dinersForSlot = (
@@ -240,8 +247,10 @@ export function generateWeekPlan(
     // Pool de recettes éligibles pour ce slot :
     //  - saisonnement compatibles
     //  - allowedSlots respectées (si la recette est restreinte, le slot doit être dedans)
+    //  - non explicitement exclues (cas régénération slot)
     const seasonalRecipes = ctx.recipes.filter(
       (r) =>
+        !isExcluded(r.id) &&
         isRecipeInSeason(r.season, slotSeason) &&
         isRecipeAllowedAtSlot(r, dayOfWeek, mealType)
     );
@@ -292,17 +301,23 @@ export function generateWeekPlan(
 
           // Fallback ultime : on autorise hors-saison MAIS on respecte
           // toujours les allowedSlots (contrainte hard, pas un soft prefer).
-          const fallback =
-            seasonalFallback.length > 0
-              ? seasonalFallback
-              : ctx.recipes
-                  .filter((r) => isRecipeAllowedAtSlot(r, dayOfWeek, mealType))
-                  .map((recipe) => {
-                    const accepted = dinersWhoAccept(recipe, remainingDiners);
-                    if (accepted.length === 0) return null;
-                    return { item: { recipe, accepted }, weight: 0.5 };
-                  })
-                  .filter((x): x is NonNullable<typeof x> => x !== null);
+          // Note : on tolère ici les exclusions seulement si VRAIMENT plus rien
+          // d'autre n'est trouvable (cf. construction de fallbackOutOfSeason
+          // ci-dessous).
+          let fallback = seasonalFallback;
+          if (fallback.length === 0) {
+            const fallbackOutOfSeason = ctx.recipes
+              .filter(
+                (r) => !isExcluded(r.id) && isRecipeAllowedAtSlot(r, dayOfWeek, mealType)
+              )
+              .map((recipe) => {
+                const accepted = dinersWhoAccept(recipe, remainingDiners);
+                if (accepted.length === 0) return null;
+                return { item: { recipe, accepted }, weight: 0.5 };
+              })
+              .filter((x): x is NonNullable<typeof x> => x !== null);
+            fallback = fallbackOutOfSeason;
+          }
 
           if (fallback.length === 0) break;
           const picked = weightedRandomPick(fallback, rng);
