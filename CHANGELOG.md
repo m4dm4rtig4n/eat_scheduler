@@ -1,3 +1,9 @@
+## [1.3.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.2.2...v1.3.0) (2026-05-01)
+
+### Features
+
+* ajouter la configuration DNS pour les pods ([29464bf](https://github.com/m4dm4rtig4n/eat_scheduler/commit/29464bf74790692167e95060758cc11b34bd87b7))
+
 ## [1.2.2](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.2.1...v1.2.2) (2026-05-01)
 
 ### Bug Fixes
