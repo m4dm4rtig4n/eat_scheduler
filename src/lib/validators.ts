@@ -108,6 +108,13 @@ export const dinerCreateSchema = z.object({
   coefficient: z.coerce.number().min(0.1).max(2),
 });
 
+export const unavailableSlotInputSchema = z.object({
+  dayOfWeek: z.coerce.number().int().min(0).max(6),
+  mealType: z.enum(["lunch", "dinner"]),
+});
+
+export type UnavailableSlotInput = z.infer<typeof unavailableSlotInputSchema>;
+
 export const dinerUpdateSchema = z.object({
   label: z.string().min(1).max(50).optional(),
   initials: z.string().min(1).max(3).optional(),
@@ -115,6 +122,7 @@ export const dinerUpdateSchema = z.object({
   coefficient: z.coerce.number().min(0.1).max(2).optional(),
   archived: z.boolean().optional(),
   position: z.coerce.number().int().nonnegative().optional(),
+  unavailableSlots: z.array(unavailableSlotInputSchema).optional(),
 });
 
 export const dinerReorderSchema = z.object({

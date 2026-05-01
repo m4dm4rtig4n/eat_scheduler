@@ -64,6 +64,13 @@
       "when": 1777359536750,
       "tag": "0008_polite_silver_fox",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1777627783922,
+      "tag": "0009_nice_scarlet_spider",
+      "breakpoints": true
     }
   ]
 }

@@ -1,10 +1,17 @@
 import { eq, asc, max } from "drizzle-orm";
 import { db, schema } from "./index";
-import type { DinerConfig, ColorKey } from "@/lib/diners";
+import type {
+  DinerConfig,
+  ColorKey,
+  DinerUnavailableSlot,
+} from "@/lib/diners";
 
-const { diners } = schema;
+const { diners, dinerUnavailableSlots } = schema;
 
-function rowToConfig(row: any): DinerConfig {
+function rowToConfig(
+  row: any,
+  unavailableSlots: DinerUnavailableSlot[] = []
+): DinerConfig {
   return {
     id: row.id,
     key: row.key,
@@ -14,17 +21,31 @@ function rowToConfig(row: any): DinerConfig {
     coefficient: row.coefficient,
     position: row.position,
     archived: !!row.archived,
+    unavailableSlots,
   };
 }
 
 export async function listDiners(
   includeArchived = false
 ): Promise<DinerConfig[]> {
-  const rows = await (db as any)
-    .select()
-    .from(diners)
-    .orderBy(asc(diners.position));
-  const all = rows.map(rowToConfig);
+  const [rows, slotRows] = await Promise.all([
+    (db as any).select().from(diners).orderBy(asc(diners.position)),
+    (db as any).select().from(dinerUnavailableSlots),
+  ]);
+
+  const slotsByDinerId = new Map<number, DinerUnavailableSlot[]>();
+  for (const s of slotRows) {
+    const list = slotsByDinerId.get(s.dinerId) ?? [];
+    list.push({
+      dayOfWeek: s.dayOfWeek,
+      mealType: s.mealType as "lunch" | "dinner",
+    });
+    slotsByDinerId.set(s.dinerId, list);
+  }
+
+  const all = rows.map((r: any) =>
+    rowToConfig(r, slotsByDinerId.get(r.id) ?? [])
+  );
   return includeArchived ? all : all.filter((d: DinerConfig) => !d.archived);
 }
 
@@ -113,5 +134,39 @@ export async function findDinerById(
     .from(diners)
     .where(eq(diners.id, id))
     .limit(1);
-  return rows[0] ? rowToConfig(rows[0]) : undefined;
+  if (!rows[0]) return undefined;
+  const slotRows = await (db as any)
+    .select()
+    .from(dinerUnavailableSlots)
+    .where(eq(dinerUnavailableSlots.dinerId, id));
+  const slots: DinerUnavailableSlot[] = slotRows.map((s: any) => ({
+    dayOfWeek: s.dayOfWeek,
+    mealType: s.mealType as "lunch" | "dinner",
+  }));
+  return rowToConfig(rows[0], slots);
+}
+
+/**
+ * Remplace l'ensemble des indisponibilités récurrentes d'un convive.
+ * Pattern delete-then-insert : simple, dédupliqué via la PK composite,
+ * et la table reste en cohérence forte avec l'UI (tout-ou-rien).
+ */
+export async function setUnavailableSlots(
+  dinerId: number,
+  slots: DinerUnavailableSlot[]
+): Promise<void> {
+  await (db as any)
+    .delete(dinerUnavailableSlots)
+    .where(eq(dinerUnavailableSlots.dinerId, dinerId));
+  if (slots.length === 0) return;
+  // Dédup défensif côté code au cas où le caller envoie des doublons
+  const seen = new Set<string>();
+  const rows: { dinerId: number; dayOfWeek: number; mealType: string }[] = [];
+  for (const s of slots) {
+    const k = `${s.dayOfWeek}|${s.mealType}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    rows.push({ dinerId, dayOfWeek: s.dayOfWeek, mealType: s.mealType });
+  }
+  await (db as any).insert(dinerUnavailableSlots).values(rows);
 }

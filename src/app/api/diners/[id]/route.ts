@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { updateDiner, archiveDiner, findDinerById } from "@/lib/db/diners";
+import {
+  updateDiner,
+  archiveDiner,
+  findDinerById,
+  setUnavailableSlots,
+} from "@/lib/db/diners";
 import { dinerUpdateSchema } from "@/lib/validators";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -18,7 +23,13 @@ export async function PATCH(request: NextRequest, { params }: Ctx) {
   if (!found) {
     return NextResponse.json({ error: "Introuvable" }, { status: 404 });
   }
-  await updateDiner(Number(id), parsed.data);
+  const { unavailableSlots, ...rest } = parsed.data;
+  if (Object.keys(rest).length > 0) {
+    await updateDiner(Number(id), rest);
+  }
+  if (unavailableSlots !== undefined) {
+    await setUnavailableSlots(Number(id), unavailableSlots);
+  }
   return new NextResponse(null, { status: 204 });
 }
 

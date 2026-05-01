@@ -19,8 +19,10 @@ import {
   COLOR_BG,
   COLOR_LABEL,
   type DinerConfig,
+  type DinerUnavailableSlot,
   type ColorKey,
 } from "@/lib/diners";
+import { DAY_LABELS_SHORT, type DayOfWeek } from "@/lib/days";
 import { cn } from "@/lib/utils";
 import { useDinersContext } from "@/components/diners-provider";
 
@@ -317,8 +319,41 @@ function DinerEditor({
   const [coefficient, setCoefficient] = useState<number>(
     diner?.coefficient ?? 1.0
   );
+  // État de présence : on stocke un Set de "dayOfWeek|mealType" pour les
+  // créneaux où la personne est ABSENTE par défaut. Vide = présente partout.
+  const [unavailable, setUnavailable] = useState<Set<string>>(() => {
+    const s = new Set<string>();
+    for (const slot of diner?.unavailableSlots ?? []) {
+      s.add(`${slot.dayOfWeek}|${slot.mealType}`);
+    }
+    return s;
+  });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const togglePresence = (dayOfWeek: number, mealType: "lunch" | "dinner") => {
+    const k = `${dayOfWeek}|${mealType}`;
+    setUnavailable((curr) => {
+      const next = new Set(curr);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
+  };
+
+  const unavailableSlots: DinerUnavailableSlot[] = Array.from(unavailable)
+    .map((k) => {
+      const [d, m] = k.split("|");
+      return {
+        dayOfWeek: parseInt(d, 10),
+        mealType: m as "lunch" | "dinner",
+      };
+    })
+    .sort((a, b) =>
+      a.dayOfWeek !== b.dayOfWeek
+        ? a.dayOfWeek - b.dayOfWeek
+        : a.mealType.localeCompare(b.mealType)
+    );
 
   // Auto-générer les initiales si label change et créateur n'a pas saisi
   const onLabelChange = (v: string) => {
@@ -352,7 +387,7 @@ function DinerEditor({
         while (existingKeys.includes(key)) {
           key = `${slugify(label)}-${i++}`;
         }
-        const res = await fetch("/api/diners", {
+        const createRes = await fetch("/api/diners", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -363,10 +398,21 @@ function DinerEditor({
             coefficient,
           }),
         });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
+        if (!createRes.ok) {
+          const err = await createRes.json().catch(() => ({}));
           setError(err.error ?? "Erreur");
           return;
+        }
+        // Si l'utilisateur a déjà configuré des indispos pendant la création,
+        // on les pousse via PATCH après création (POST n'accepte pas ce champ
+        // pour rester compatible avec le flux existant).
+        if (unavailableSlots.length > 0) {
+          const created: { id: number } = await createRes.json();
+          await fetch(`/api/diners/${created.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ unavailableSlots }),
+          });
         }
       } else if (diner) {
         const res = await fetch(`/api/diners/${diner.id}`, {
@@ -377,6 +423,7 @@ function DinerEditor({
             initials: initials.trim(),
             colorKey,
             coefficient,
+            unavailableSlots,
           }),
         });
         if (!res.ok) {
@@ -475,6 +522,12 @@ function DinerEditor({
         </div>
       </div>
 
+      <PresenceGrid
+        unavailable={unavailable}
+        onToggle={togglePresence}
+        accentBg={COLOR_BG[colorKey]}
+      />
+
       {error && (
         <p className="text-xs text-danger bg-danger-soft px-3 py-2 rounded-lg">
           {error}
@@ -503,6 +556,90 @@ function DinerEditor({
           Enregistrer
         </Button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Grille de présence : 7 jours × 2 créneaux (midi/soir).
+ *
+ * Sémantique : par défaut tout le monde est présent. Décocher une case
+ * marque le créneau comme "absent récurrent" — utilisé par le générateur
+ * pour ne pas servir cette personne à ce créneau, et par le WeekPlanner
+ * pour pré-cocher uniquement les présents lors d'un ajout manuel.
+ *
+ * L'utilisateur peut toujours forcer la présence ponctuellement sur une
+ * MealCard (l'indispo n'est qu'un défaut, pas un blocage).
+ */
+function PresenceGrid({
+  unavailable,
+  onToggle,
+  accentBg,
+}: {
+  unavailable: Set<string>;
+  onToggle: (dayOfWeek: number, mealType: "lunch" | "dinner") => void;
+  accentBg: string;
+}) {
+  const days: DayOfWeek[] = [0, 1, 2, 3, 4, 5, 6];
+  const slots: Array<{ key: "lunch" | "dinner"; label: string }> = [
+    { key: "lunch", label: "Midi" },
+    { key: "dinner", label: "Soir" },
+  ];
+
+  const isPresent = (d: number, m: "lunch" | "dinner") =>
+    !unavailable.has(`${d}|${m}`);
+
+  return (
+    <div>
+      <Label>Présence par défaut</Label>
+      <div className="rounded-lg border border-border overflow-hidden">
+        <div className="grid grid-cols-[auto_repeat(7,minmax(0,1fr))] text-[10px] uppercase tracking-wider font-bold text-muted-foreground bg-muted/40">
+          <div className="px-2 py-1.5" />
+          {days.map((d) => (
+            <div key={d} className="px-1 py-1.5 text-center">
+              {DAY_LABELS_SHORT[d]}
+            </div>
+          ))}
+        </div>
+        {slots.map((slot) => (
+          <div
+            key={slot.key}
+            className="grid grid-cols-[auto_repeat(7,minmax(0,1fr))] border-t border-border"
+          >
+            <div className="px-2 py-2 text-[11px] font-semibold text-muted-foreground flex items-center">
+              {slot.label}
+            </div>
+            {days.map((d) => {
+              const present = isPresent(d, slot.key);
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => onToggle(d, slot.key)}
+                  className={cn(
+                    "h-9 flex items-center justify-center transition-colors border-l border-border",
+                    present
+                      ? cn(accentBg, "text-white hover:opacity-90")
+                      : "bg-background text-muted-foreground/40 hover:bg-muted"
+                  )}
+                  aria-pressed={present}
+                  aria-label={`${slot.label} ${DAY_LABELS_SHORT[d]} : ${
+                    present ? "présent" : "absent"
+                  }`}
+                  title={present ? "Présent" : "Absent"}
+                >
+                  {present ? <Check className="size-3.5" /> : <X className="size-3.5" />}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+      <p className="text-[10px] text-muted-foreground mt-1.5 leading-snug">
+        Décoche les créneaux où la personne n'est habituellement pas là (ex.
+        cantine le midi en semaine). Ça reste modifiable au cas par cas sur
+        chaque repas.
+      </p>
     </div>
   );
 }

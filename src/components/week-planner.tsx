@@ -35,6 +35,7 @@ import {
 } from "@/lib/utils";
 import {
   activeDinerKeys,
+  availableDinerKeysForSlot,
   dinerInitials,
   dinerLabel,
   dinerColorBg,
@@ -182,10 +183,19 @@ export function WeekPlanner({
         for (const m of siblings) {
           for (const d of m.diners) taken.add(d);
         }
-        let availableDiners = dinerKeysActive.filter((d) => !taken.has(d));
-        // Fallback : si tout le monde est déjà pris, on prend juste le
-        // premier convive pour respecter le validator (min 1) — il sera
-        // automatiquement retiré du sibling où il était (transfert).
+        // Convives disponibles par défaut sur ce slot (jour × midi/soir),
+        // selon les indispos récurrentes configurées en réglages.
+        const dow = getDayOfWeekFromIso(picker.date);
+        const presentByDefault = availableDinerKeysForSlot(
+          dinersConfig,
+          dinerKeysActive,
+          dow,
+          picker.mealType
+        );
+        let availableDiners = presentByDefault.filter((d) => !taken.has(d));
+        // Fallback : si tout le monde est déjà pris OU absent par défaut,
+        // on prend juste le premier convive actif pour respecter le validator
+        // (min 1). L'utilisateur pourra ajuster manuellement.
         if (availableDiners.length === 0 && dinerKeysActive.length > 0) {
           availableDiners = [dinerKeysActive[0]];
         }
@@ -455,10 +465,13 @@ export function WeekPlanner({
       </div>
 
       <ul className="space-y-3 lg:space-y-0 lg:grid lg:grid-cols-7 lg:gap-3">
-        {upcomingDays.map((day) => {
+        {/* Desktop : 7 jours sur une ligne (passés inclus, grisés).
+            Mobile : seulement upcomingDays — les passés vont dans la section repliable plus bas. */}
+        {days.map((day) => {
           const dateISO = formatDateISO(day);
           const isToday = todayISO === dateISO;
-          const isPast = false;
+          const isPast = dateISO < todayISO;
+          const isUpcoming = !isPast;
           const dayName = FULL_DAY_NAMES[day.getDay()];
           return (
             <li
@@ -467,7 +480,11 @@ export function WeekPlanner({
                 "rounded-[var(--radius-lg)] overflow-hidden transition-all lg:flex lg:flex-col",
                 isToday
                   ? "bg-card shadow-lift ring-2 ring-primary/40"
-                  : "bg-card border border-border shadow-soft"
+                  : "bg-card border border-border shadow-soft",
+                // Sur mobile (default) : on cache les jours passés (gérés par la section repliable)
+                !isUpcoming && "hidden lg:flex",
+                // Sur desktop : les jours passés sont grisés
+                isPast && "lg:opacity-60 lg:saturate-50"
               )}
             >
               <div
@@ -499,12 +516,6 @@ export function WeekPlanner({
                   </span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  {isToday && (
-                    <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.2em] mb-1 px-2 py-0.5 rounded-full bg-white/25 backdrop-blur">
-                      <span className="size-1.5 rounded-full bg-white animate-pulse" />
-                      Aujourd'hui
-                    </span>
-                  )}
                   <p
                     className={cn(
                       "font-black text-lg sm:text-2xl leading-tight tracking-tight capitalize truncate",
@@ -657,7 +668,7 @@ export function WeekPlanner({
       </ul>
 
       {pastDays.length > 0 && (
-        <div className="mt-5">
+        <div className="mt-5 lg:hidden">
           <button
             type="button"
             onClick={() => setShowPast((s) => !s)}

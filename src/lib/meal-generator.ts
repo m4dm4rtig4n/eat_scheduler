@@ -1,4 +1,9 @@
-import type { Diner, Preference } from "@/lib/diners";
+import {
+  isDinerAvailable,
+  type Diner,
+  type DinerConfig,
+  type Preference,
+} from "@/lib/diners";
 import {
   getSeasonFromDate,
   isRecipeInSeason,
@@ -20,7 +25,9 @@ export type GenerationContext = {
   endDate: string;
   mealTypes: MealType[];
   existingMeals: Array<{ date: string; mealType: string; recipeId: number }>;
-  diners: Diner[];
+  // Configurations complètes (avec unavailableSlots) plutôt que seulement les keys :
+  // le filtrage de présence se fait par créneau, donc on a besoin de la config.
+  dinerConfigs: DinerConfig[];
   seasonOverride?: "summer" | "winter";
   slotFavorites?: SlotFavorite[];
 };
@@ -131,8 +138,18 @@ export function generateWeekPlan(
   ctx: GenerationContext,
   rng: () => number = Math.random
 ): GeneratedSlot[] {
-  const dinersToServe = ctx.diners;
-  if (dinersToServe.length === 0) return [];
+  const allActive = ctx.dinerConfigs.filter((d) => !d.archived);
+  if (allActive.length === 0) return [];
+
+  // Filtre les convives à servir pour un slot donné, en respectant les
+  // indisponibilités récurrentes configurées en réglages.
+  const dinersForSlot = (
+    dayOfWeek: number,
+    mealType: MealType
+  ): Diner[] =>
+    allActive
+      .filter((d) => isDinerAvailable(d, dayOfWeek, mealType))
+      .map((d) => d.key);
 
   const usedThisWeek = new Set<number>();
   const slots: GeneratedSlot[] = [];
@@ -187,6 +204,12 @@ export function generateWeekPlan(
       ctx.seasonOverride ?? getSeasonFromDate(new Date(date));
     const dayOfWeek = getDayOfWeekFromIso(date);
 
+    // Convives présents par défaut sur ce créneau (jour × midi/soir).
+    // Si tout le monde est marqué absent en réglages, on skip purement et
+    // simplement ce slot — comportement choisi : pas de repas créé du tout.
+    const slotDiners = dinersForSlot(dayOfWeek, mealType);
+    if (slotDiners.length === 0) continue;
+
     // Cas spécial : pinned. Placement direct, pas de scoring.
     // Un pin gagne sur tout (saison, dislikes), c'est l'intention explicite.
     const pinnedIds = pinnedByKey.get(`${dayOfWeek}|${mealType}`);
@@ -196,7 +219,7 @@ export function generateWeekPlan(
         const recipe = ctx.recipes.find((r) => r.id === id);
         if (!recipe) continue; // recette supprimée entre-temps
         // Convives qui acceptent : on respecte les dislikes même pour les pinned
-        const accepted = dinersWhoAccept(recipe, dinersToServe);
+        const accepted = dinersWhoAccept(recipe, slotDiners);
         if (accepted.length === 0) continue; // personne, on skip
         pinnedMeals.push({
           date,
@@ -227,7 +250,7 @@ export function generateWeekPlan(
       const slotFavoriteIds = favoritesByKey.get(`${dayOfWeek}|${mealType}`);
 
       const generatedMeals: PlannedMealInput[] = [];
-      let remainingDiners = [...dinersToServe];
+      let remainingDiners = [...slotDiners];
 
       // Boucle de couverture : continuer tant qu'il reste des convives
       // sans plat assigné, avec une garde anti-boucle infinie

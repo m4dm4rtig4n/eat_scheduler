@@ -114,6 +114,22 @@ export const diners = sqliteTable("diners", {
   archived: integer("archived", { mode: "boolean" }).notNull().default(false),
 });
 
+export const dinerUnavailableSlots = sqliteTable(
+  "diner_unavailable_slots",
+  {
+    dinerId: integer("diner_id")
+      .notNull()
+      .references(() => diners.id, { onDelete: "cascade" }),
+    dayOfWeek: integer("day_of_week").notNull(),
+    mealType: text("meal_type").notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({
+      columns: [table.dinerId, table.dayOfWeek, table.mealType],
+    }),
+  })
+);
+
 export const recipesRelations = relations(recipes, ({ many }) => ({
   ingredients: many(recipeIngredients),
   preferences: many(recipePreferences),
@@ -176,3 +192,17 @@ export const plannedMealsRelations = relations(plannedMeals, ({ one }) => ({
     references: [recipes.id],
   }),
 }));
+
+export const dinersRelations = relations(diners, ({ many }) => ({
+  unavailableSlots: many(dinerUnavailableSlots),
+}));
+
+export const dinerUnavailableSlotsRelations = relations(
+  dinerUnavailableSlots,
+  ({ one }) => ({
+    diner: one(diners, {
+      fields: [dinerUnavailableSlots.dinerId],
+      references: [diners.id],
+    }),
+  })
+);

@@ -27,6 +27,14 @@ export function isPreference(value: string): value is Preference {
   return value === "love" || value === "like" || value === "dislike";
 }
 
+// Indisponibilité récurrente d'un convive sur un créneau (jour × midi/soir).
+// L'absence est stockée plutôt que la présence : par défaut tout le monde
+// est disponible, et on enregistre uniquement les exceptions.
+export type DinerUnavailableSlot = {
+  dayOfWeek: number; // lundi = 0, dimanche = 6 (cohérent avec lib/days.ts)
+  mealType: "lunch" | "dinner";
+};
+
 // Configuration runtime d'un convive.
 // `id` est présent pour les données venant de la DB, absent pour le fallback statique.
 export type DinerConfig = {
@@ -38,6 +46,7 @@ export type DinerConfig = {
   coefficient: number;
   position: number;
   archived?: boolean;
+  unavailableSlots?: DinerUnavailableSlot[];
 };
 
 // Palette de couleurs disponibles pour les convives
@@ -140,4 +149,53 @@ export function activeDiners(diners: DinerConfig[]): DinerConfig[] {
  */
 export function activeDinerKeys(diners: DinerConfig[]): Diner[] {
   return activeDiners(diners).map((d) => d.key);
+}
+
+/**
+ * Indique si un convive est disponible sur un créneau donné (jour × midi/soir),
+ * selon ses indisponibilités récurrentes configurées en réglages.
+ *
+ * Sémantique : un convive est disponible PAR DÉFAUT, sauf si une entrée
+ * `unavailableSlots` correspond exactement au couple (dayOfWeek, mealType).
+ *
+ * Cette fonction est utilisée par :
+ *  - le générateur de menus (`meal-generator.ts`) pour filtrer les convives
+ *    à servir avant de chercher une recette
+ *  - l'UI WeekPlanner pour pré-cocher uniquement les présents lors d'un ajout
+ *
+ * NB : ce n'est PAS un blocage — l'utilisateur peut toujours toggler
+ * manuellement un convive absent sur une MealCard (cf. décision produit).
+ *
+ * @param diner    Configuration du convive (peut venir de la DB ou du fallback)
+ * @param dayOfWeek Jour de la semaine (lundi = 0, dimanche = 6)
+ * @param mealType  Créneau du repas
+ * @returns true si le convive est disponible, false sinon
+ */
+export function isDinerAvailable(
+  diner: DinerConfig,
+  dayOfWeek: number,
+  mealType: "lunch" | "dinner"
+): boolean {
+  if (!diner.unavailableSlots || diner.unavailableSlots.length === 0) {
+    return true;
+  }
+  return !diner.unavailableSlots.some(
+    (s) => s.dayOfWeek === dayOfWeek && s.mealType === mealType
+  );
+}
+
+/**
+ * Filtre une liste de keys de convives pour ne garder que ceux disponibles
+ * sur un créneau donné. Préserve l'ordre canonique des `diners` fournis.
+ */
+export function availableDinerKeysForSlot(
+  diners: DinerConfig[],
+  keys: Diner[],
+  dayOfWeek: number,
+  mealType: "lunch" | "dinner"
+): Diner[] {
+  const keySet = new Set(keys);
+  return activeDiners(diners)
+    .filter((d) => keySet.has(d.key) && isDinerAvailable(d, dayOfWeek, mealType))
+    .map((d) => d.key);
 }
