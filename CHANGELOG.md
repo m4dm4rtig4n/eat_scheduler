@@ -1,3 +1,9 @@
+## [1.4.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.3.0...v1.4.0) (2026-05-01)
+
+### Features
+
+* ajouter une barre de navigation latérale et améliorer la mise en page responsive ([b428baa](https://github.com/m4dm4rtig4n/eat_scheduler/commit/b428baa671820eebce9b293fecb51fb3918d2687))
+
 ## [1.3.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.2.2...v1.3.0) (2026-05-01)
 
 ### Features
