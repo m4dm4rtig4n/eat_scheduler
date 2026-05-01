@@ -1,3 +1,9 @@
+## [1.5.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.4.0...v1.5.0) (2026-05-01)
+
+### Features
+
+* ajouter un nouveau service worker avec gestion des mises à jour et mise en cache ([afe022b](https://github.com/m4dm4rtig4n/eat_scheduler/commit/afe022b6b0d57f08c83dc76d9c6207121f38468f))
+
 ## [1.4.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.3.0...v1.4.0) (2026-05-01)
 
 ### Features
