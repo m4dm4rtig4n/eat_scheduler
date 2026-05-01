@@ -1,3 +1,9 @@
+## [1.6.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.5.0...v1.6.0) (2026-05-01)
+
+### Features
+
+* add unavailable slots feature for diners ([9ac5f71](https://github.com/m4dm4rtig4n/eat_scheduler/commit/9ac5f715036e879a171bf124ab862acb48ef13d2))
+
 ## [1.5.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.4.0...v1.5.0) (2026-05-01)
 
 ### Features
