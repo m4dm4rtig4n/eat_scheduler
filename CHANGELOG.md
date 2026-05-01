@@ -1,3 +1,9 @@
+## [1.8.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.7.0...v1.8.0) (2026-05-01)
+
+### Features
+
+* implement authentication and authorization features ([56bf446](https://github.com/m4dm4rtig4n/eat_scheduler/commit/56bf446bb93b5651f49ffa7550cb1e6f46907b3b))
+
 ## [1.7.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.6.0...v1.7.0) (2026-05-01)
 
 ### Features
