@@ -8,6 +8,7 @@ import {
   BookOpen,
   ShoppingCart,
   Settings,
+  Star,
   Menu,
   X,
 } from "lucide-react";
@@ -16,6 +17,7 @@ import { cn } from "@/lib/utils";
 const items = [
   { href: "/", label: "Planning", icon: CalendarDays },
   { href: "/recipes", label: "Recettes", icon: BookOpen },
+  { href: "/favorites", label: "Favoris hebdo", icon: Star },
   { href: "/shopping", label: "Courses", icon: ShoppingCart },
 ];
 

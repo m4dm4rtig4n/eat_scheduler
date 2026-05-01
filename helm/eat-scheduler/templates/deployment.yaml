@@ -47,6 +47,23 @@ spec:
                   name: {{ .Values.database.postgres.existingSecret | required "postgres.existingSecret requis en mode postgres" }}
                   key: {{ .Values.database.postgres.secretKey }}
             {{- end }}
+            {{- if .Values.auth.enabled }}
+            - name: APP_PASSWORD
+              {{- if .Values.auth.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.existingSecret }}
+                  key: {{ .Values.auth.secretKey }}
+              {{- else }}
+              value: {{ .Values.auth.password | required "auth.password ou auth.existingSecret requis quand auth.enabled=true" | quote }}
+              {{- end }}
+            - name: AUTH_MAX_FAILS
+              value: {{ .Values.auth.maxFails | quote }}
+            - name: AUTH_FAIL_WINDOW_MINUTES
+              value: {{ .Values.auth.failWindowMinutes | quote }}
+            - name: AUTH_BAN_DURATION_MINUTES
+              value: {{ .Values.auth.banDurationMinutes | quote }}
+            {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -57,13 +74,13 @@ spec:
           {{- end }}
           livenessProbe:
             httpGet:
-              path: /
+              path: /api/health
               port: http
             initialDelaySeconds: 30
             periodSeconds: 30
           readinessProbe:
             httpGet:
-              path: /
+              path: /api/health
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10

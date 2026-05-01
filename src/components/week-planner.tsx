@@ -16,7 +16,6 @@ import {
   Clock,
   Pin,
 } from "lucide-react";
-import { SlotFavoritesModal } from "@/components/slot-favorites-modal";
 import { RecipeFilterChips } from "@/components/recipe-filter-chips";
 import { Button } from "@/components/ui/button";
 import {
@@ -102,7 +101,6 @@ export function WeekPlanner({
   } | null>(null);
   const [generating, setGenerating] = useState(false);
   const [generateOpen, setGenerateOpen] = useState(false);
-  const [favoritesOpen, setFavoritesOpen] = useState(false);
   const [slotFavorites, setSlotFavorites] = useState<SlotFavorite[]>([]);
   const [, startTransition] = useTransition();
 
@@ -116,11 +114,6 @@ export function WeekPlanner({
   useEffect(() => {
     loadFavorites();
   }, []);
-
-  // Recharge les favoris quand la modal se ferme (en cas d'édition)
-  useEffect(() => {
-    if (!favoritesOpen) loadFavorites();
-  }, [favoritesOpen]);
 
   // Index : "{dayOfWeek}|{mealType}|{recipeId}" → pinned
   const pinnedIndex = new Set<string>();
@@ -520,19 +513,9 @@ export function WeekPlanner({
           )}
           Générer la semaine
         </Button>
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={() => setFavoritesOpen(true)}
-          disabled={recipes.length === 0}
-          aria-label="Favoris hebdo"
-          title="Favoris hebdo"
-        >
-          <Star className="size-4" />
-        </Button>
       </div>
 
-      <ul className="space-y-3 lg:space-y-0 lg:grid lg:grid-cols-7 lg:gap-3">
+      <ul className="space-y-3 lg:space-y-0 lg:grid lg:grid-cols-7 lg:grid-rows-[auto_auto_auto] lg:gap-3">
         {/* Desktop : 7 jours sur une ligne (passés inclus, grisés).
             Mobile : seulement upcomingDays — les passés vont dans la section repliable plus bas. */}
         {days.map((day) => {
@@ -545,12 +528,17 @@ export function WeekPlanner({
             <li
               key={dateISO}
               className={cn(
-                "rounded-[var(--radius-lg)] overflow-hidden transition-all lg:flex lg:flex-col",
+                "rounded-[var(--radius-lg)] overflow-hidden transition-all",
+                // Sur mobile : flex column simple. Sur desktop : subgrid sur 3 lignes
+                // (header, midi, soir) — toutes les cards partagent le même rythme
+                // vertical, donc les blocs Soir s'alignent peu importe la quantité
+                // de plats au midi.
+                "lg:grid lg:grid-rows-subgrid lg:row-span-3",
                 isToday
                   ? "bg-card shadow-lift ring-2 ring-primary/40"
                   : "bg-card border border-border shadow-soft",
                 // Sur mobile (default) : on cache les jours passés (gérés par la section repliable)
-                !isUpcoming && "hidden lg:flex",
+                !isUpcoming && "hidden lg:grid",
                 // Sur desktop : les jours passés sont grisés
                 isPast && "lg:opacity-60 lg:saturate-50"
               )}
@@ -637,39 +625,59 @@ export function WeekPlanner({
                 </div>
               </div>
 
-              <div className="divide-y divide-border lg:flex-1">
+              <div className="flex flex-col gap-3 p-3 lg:gap-2 lg:p-2 lg:grid lg:grid-rows-subgrid lg:row-span-2">
                 {(["lunch", "dinner"] as MealSlot[]).map((slot) => {
                   const slotMeals = findMeals(dateISO, slot);
                   const meta = SLOT_META[slot];
                   const SlotIcon = meta.icon;
                   return (
-                    <div
+                    <section
                       key={slot}
-                      className="flex items-stretch gap-2 sm:gap-3 px-2 sm:px-3 py-3 lg:flex-col lg:gap-2 lg:px-2"
+                      aria-labelledby={`slot-${dateISO}-${slot}`}
+                      className={cn(
+                        "rounded-[var(--radius-lg)] border overflow-hidden flex flex-col",
+                        // Sur desktop, étire la section pour remplir la row du
+                        // subgrid parent → frontières Midi/Soir alignées entre cards.
+                        "lg:h-full",
+                        meta.bg,
+                        "border-transparent ring-1",
+                        meta.ring
+                      )}
                     >
-                      <div
+                      <header
                         className={cn(
-                          "flex flex-col items-center justify-start gap-1 pt-1 w-10 sm:w-12 shrink-0 lg:flex-row lg:w-auto lg:pt-0 lg:items-center"
+                          "flex items-center gap-2 px-3 py-2 border-b border-border/40 bg-card/40 backdrop-blur-sm"
                         )}
                       >
                         <div
                           className={cn(
-                            "flex items-center justify-center size-8 rounded-full ring-1",
-                            meta.bg,
+                            "flex items-center justify-center size-7 rounded-full ring-1 bg-card",
                             meta.ring
                           )}
                         >
                           <SlotIcon
-                            className={cn("size-4", meta.iconColor)}
-                            strokeWidth={2.2}
+                            className={cn("size-3.5", meta.iconColor)}
+                            strokeWidth={2.4}
                           />
                         </div>
-                        <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+                        <span
+                          id={`slot-${dateISO}-${slot}`}
+                          className={cn(
+                            "text-[11px] font-bold uppercase tracking-[0.18em]",
+                            meta.iconColor
+                          )}
+                        >
                           {meta.label}
                         </span>
-                      </div>
+                        {slotMeals.length > 0 && (
+                          <span className="ml-auto text-[10px] font-semibold text-muted-foreground tabular-nums">
+                            {slotMeals.length} plat
+                            {slotMeals.length > 1 ? "s" : ""}
+                          </span>
+                        )}
+                      </header>
 
-                      <div className="flex-1 min-w-0">
+                      <div className="p-2 sm:p-3 lg:p-2 lg:flex-1 flex flex-col">
                         {slotMeals.length > 0 ? (
                           <div className="space-y-2">
                             {slotMeals.map((meal) => (
@@ -690,7 +698,7 @@ export function WeekPlanner({
                               />
                             ))}
                             {!isPast && (
-                              <div className="flex gap-1.5">
+                              <div className="flex gap-1 sm:gap-1.5">
                                 <button
                                   onClick={() =>
                                     setPicker({
@@ -698,10 +706,14 @@ export function WeekPlanner({
                                       mealType: slot,
                                     })
                                   }
-                                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs text-muted-foreground hover:text-primary hover:bg-primary-soft/40 rounded-lg transition-colors"
+                                  className="flex-1 min-w-0 flex items-center justify-center gap-1.5 py-1.5 text-xs text-muted-foreground hover:text-primary hover:bg-primary-soft/40 rounded-lg transition-colors"
+                                  aria-label="Ajouter un plat"
+                                  title="Ajouter un plat"
                                 >
-                                  <Plus className="size-3.5" />
-                                  Ajouter un plat
+                                  <Plus className="size-3.5 shrink-0" />
+                                  <span className="truncate lg:hidden">
+                                    Ajouter un plat
+                                  </span>
                                 </button>
                                 <button
                                   onClick={() => regenerateSlot(dateISO, slot)}
@@ -709,7 +721,7 @@ export function WeekPlanner({
                                     regeneratingSlot === `${dateISO}|${slot}` ||
                                     recipes.length === 0
                                   }
-                                  className="inline-flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs text-muted-foreground hover:text-primary hover:bg-primary-soft/40 rounded-lg transition-colors disabled:opacity-50"
+                                  className="inline-flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs text-muted-foreground hover:text-primary hover:bg-primary-soft/40 rounded-lg transition-colors disabled:opacity-50 shrink-0 lg:flex-1"
                                   title="Régénérer ce repas"
                                   aria-label="Régénérer ce repas"
                                 >
@@ -718,7 +730,9 @@ export function WeekPlanner({
                                   ) : (
                                     <Sparkles className="size-3.5" />
                                   )}
-                                  <span className="hidden sm:inline">Régénérer</span>
+                                  <span className="hidden sm:inline lg:hidden">
+                                    Régénérer
+                                  </span>
                                 </button>
                               </div>
                             )}
@@ -757,7 +771,7 @@ export function WeekPlanner({
                           </div>
                         )}
                       </div>
-                    </div>
+                    </section>
                   );
                 })}
               </div>
@@ -820,34 +834,42 @@ export function WeekPlanner({
                       </div>
                     </div>
 
-                    <div className="divide-y divide-border">
+                    <div className="flex flex-col gap-3 p-3">
                       {(["lunch", "dinner"] as MealSlot[]).map((slot) => {
                         const slotMeals = findMeals(dateISO, slot);
                         const meta = SLOT_META[slot];
                         const SlotIcon = meta.icon;
                         return (
-                          <div
+                          <section
                             key={slot}
-                            className="flex items-stretch gap-2 sm:gap-3 px-2 sm:px-3 py-3"
+                            className={cn(
+                              "rounded-[var(--radius-lg)] overflow-hidden ring-1",
+                              meta.bg,
+                              meta.ring
+                            )}
                           >
-                            <div className="flex flex-col items-center justify-start gap-1 pt-1 w-10 sm:w-12 shrink-0">
+                            <header className="flex items-center gap-2 px-3 py-2 border-b border-border/40 bg-card/40 backdrop-blur-sm">
                               <div
                                 className={cn(
-                                  "flex items-center justify-center size-8 rounded-full ring-1",
-                                  meta.bg,
+                                  "flex items-center justify-center size-7 rounded-full ring-1 bg-card",
                                   meta.ring
                                 )}
                               >
                                 <SlotIcon
-                                  className={cn("size-4", meta.iconColor)}
-                                  strokeWidth={2.2}
+                                  className={cn("size-3.5", meta.iconColor)}
+                                  strokeWidth={2.4}
                                 />
                               </div>
-                              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+                              <span
+                                className={cn(
+                                  "text-[11px] font-bold uppercase tracking-[0.18em]",
+                                  meta.iconColor
+                                )}
+                              >
                                 {meta.label}
                               </span>
-                            </div>
-                            <div className="flex-1 min-w-0">
+                            </header>
+                            <div className="p-2 sm:p-3">
                               {slotMeals.length > 0 ? (
                                 <div className="space-y-2">
                                   {slotMeals.map((meal) => (
@@ -867,7 +889,7 @@ export function WeekPlanner({
                                 </div>
                               )}
                             </div>
-                          </div>
+                          </section>
                         );
                       })}
                     </div>
@@ -904,13 +926,6 @@ export function WeekPlanner({
           onConfirm={generate}
         />
       )}
-
-      {favoritesOpen && (
-        <SlotFavoritesModal
-          recipes={recipes}
-          onClose={() => setFavoritesOpen(false)}
-        />
-      )}
     </div>
   );
 }
@@ -924,7 +939,7 @@ function MealThumbnail({
 }) {
   if (imageUrl) {
     return (
-      <div className="relative size-16 sm:size-20 rounded-lg overflow-hidden shrink-0 bg-muted ring-1 ring-border">
+      <div className="relative size-16 sm:size-20 lg:size-auto lg:w-full lg:aspect-[4/3] rounded-lg overflow-hidden shrink-0 bg-muted ring-1 ring-border">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={imageUrl}
@@ -938,8 +953,10 @@ function MealThumbnail({
   // Fallback : initiale du plat sur fond gradient chaud
   const initial = name.trim().charAt(0).toUpperCase() || "?";
   return (
-    <div className="relative size-16 sm:size-20 rounded-lg overflow-hidden shrink-0 bg-gradient-to-br from-primary/20 via-gold-soft to-accent flex items-center justify-center">
-      <span className="text-3xl font-black text-primary/70">{initial}</span>
+    <div className="relative size-16 sm:size-20 lg:size-auto lg:w-full lg:aspect-[4/3] rounded-lg overflow-hidden shrink-0 bg-gradient-to-br from-primary/20 via-gold-soft to-accent flex items-center justify-center">
+      <span className="text-3xl lg:text-2xl font-black text-primary/70">
+        {initial}
+      </span>
     </div>
   );
 }
@@ -992,27 +1009,27 @@ function MealCard({
         </span>
       )}
 
-      <div className="flex items-stretch gap-3 p-3">
+      <div className="flex items-stretch gap-3 p-3 lg:flex-col lg:gap-2 lg:p-2">
         <MealThumbnail
           imageUrl={meal.recipe.imageUrl}
           name={meal.recipe.name}
         />
-        <div className="flex-1 min-w-0 flex flex-col justify-center min-h-16 sm:min-h-20">
+        <div className="flex-1 min-w-0 flex flex-col justify-center min-h-16 sm:min-h-20 lg:min-h-0 lg:items-center lg:text-center">
           {canReplace ? (
             <button
               type="button"
               onClick={onReplace}
-              className="text-left text-base sm:text-xl font-bold leading-tight tracking-tight hover:text-primary transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 line-clamp-2 pr-8"
+              className="text-left text-base sm:text-xl lg:text-sm font-bold leading-tight tracking-tight hover:text-primary transition-colors rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 line-clamp-2 lg:min-h-[2lh] pr-8 lg:pr-0 lg:text-center w-full"
               title="Cliquer pour remplacer ce plat"
             >
               {meal.recipe.name}
             </button>
           ) : (
-            <p className="text-base sm:text-xl font-bold leading-tight tracking-tight line-clamp-2 pr-8">
+            <p className="text-base sm:text-xl lg:text-sm font-bold leading-tight tracking-tight line-clamp-2 lg:min-h-[2lh] pr-8 lg:pr-0 lg:text-center w-full">
               {meal.recipe.name}
             </p>
           )}
-          <div className="mt-1.5 flex items-center gap-1 text-sm font-semibold tabular-nums text-muted-foreground">
+          <div className="mt-1.5 lg:mt-1 flex items-center gap-1 text-sm lg:text-xs font-semibold tabular-nums text-muted-foreground lg:justify-center">
             <Users className="size-3.5" />
             <span>
               <span className="text-foreground">{sharesLabel}</span>
@@ -1022,7 +1039,7 @@ function MealCard({
         </div>
       </div>
 
-      <div className="flex items-center justify-start gap-1 sm:gap-1.5 flex-wrap px-3 pb-3 pt-1 border-t border-border/60">
+      <div className="flex items-center justify-start lg:justify-center gap-1 sm:gap-1.5 lg:gap-1 flex-wrap px-3 pb-3 pt-1 lg:px-2 lg:pb-2 border-t border-border/60">
         {dinerKeys.map((d) => {
           const isPresent = presentSet.has(d);
           const coef = dinerCoefficient(dinersConfig, d);
@@ -1034,7 +1051,7 @@ function MealCard({
               disabled={readOnly}
               onClick={() => onToggleDiner(d)}
               className={cn(
-                "group/diner relative inline-flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 h-8 rounded-full border text-xs font-medium transition-all",
+                "group/diner relative inline-flex items-center gap-1 sm:gap-1.5 lg:gap-0.5 px-1.5 sm:px-2 lg:px-1 h-8 lg:h-7 rounded-full border text-xs font-medium transition-all",
                 isPresent
                   ? "bg-card border-border-strong shadow-soft"
                   : "bg-muted/40 border-transparent text-muted-foreground/60 grayscale opacity-60 hover:opacity-100",
@@ -1046,17 +1063,17 @@ function MealCard({
             >
               <span
                 className={cn(
-                  "inline-flex items-center justify-center size-5 rounded-full text-[10px] font-bold text-white shrink-0",
+                  "inline-flex items-center justify-center size-5 lg:size-4 rounded-full text-[10px] lg:text-[8px] font-bold text-white shrink-0",
                   dinerColorBg(dinersConfig, d)
                 )}
               >
                 {dinerInitials(dinersConfig, d)}
               </span>
-              <span className="hidden sm:inline">
+              <span className="hidden sm:inline lg:hidden">
                 {dinerLabel(dinersConfig, d)}
               </span>
               {coefLabel && (
-                <span className="text-[10px] font-semibold text-muted-foreground tabular-nums">
+                <span className="text-[10px] lg:text-[9px] font-semibold text-muted-foreground tabular-nums">
                   ×{coefLabel}
                 </span>
               )}

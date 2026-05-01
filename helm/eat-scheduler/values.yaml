@@ -63,6 +63,19 @@ nodeSelector: {}
 tolerations: []
 affinity: {}
 
+# Authentification par mot de passe (désactivée si non configurée)
+auth:
+  enabled: false
+  # Soit un mot de passe en clair (déconseillé en prod) :
+  password: ""
+  # Soit la référence à un Secret Kubernetes existant :
+  existingSecret: ""
+  secretKey: APP_PASSWORD
+  # Anti-bruteforce
+  maxFails: 5
+  failWindowMinutes: 15
+  banDurationMinutes: 30
+
 extraEnv: []
 
 # Permet d'override la config DNS du pod (ex: ndots: 1 pour éviter que les
