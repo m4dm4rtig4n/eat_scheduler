@@ -1,3 +1,9 @@
+## [1.2.2](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.2.1...v1.2.2) (2026-05-01)
+
+### Bug Fixes
+
+* UX design ([66f7361](https://github.com/m4dm4rtig4n/eat_scheduler/commit/66f73613e18245795cd913172e88147d31ef091b))
+
 ## [1.2.1](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.2.0...v1.2.1) (2026-04-30)
 
 ### Bug Fixes
