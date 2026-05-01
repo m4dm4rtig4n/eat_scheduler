@@ -1,3 +1,9 @@
+## [1.7.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.6.0...v1.7.0) (2026-05-01)
+
+### Features
+
+* ajouter la gestion des recettes à exclure lors de la régénération des slots ([cb53fb4](https://github.com/m4dm4rtig4n/eat_scheduler/commit/cb53fb4402158d6ba5c0356a8ede9f1837518fcc))
+
 ## [1.6.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.5.0...v1.6.0) (2026-05-01)
 
 ### Features
