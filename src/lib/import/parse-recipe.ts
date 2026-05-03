@@ -106,18 +106,24 @@ function parseServings(v: unknown): number {
   return m ? Math.max(1, parseInt(m[1], 10)) : 2;
 }
 
-const QUANTITY_REGEX =
-  /^\s*((?:\d+[.,]?\d*|\d*\s?\d+\/\d+|½|¼|¾|⅓|⅔)\s*(?:[a-zA-Zàâäéèêëïîôöùûüç.]+)?)\s+(?:de\s+|d['']\s*)?(.+)$/i;
+const NUMERIC_PART = String.raw`(?:\d+[.,]?\d*\s\d+\/\d+)|(?:\d+\/\d+)|(?:\d+[.,]?\d*)|[½¼¾⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]`;
+const METRIC_UNIT = String.raw`(?:k?g|mg|m?l|cl|dl|cs|cc)`;
+const QUANTITY_PREFIX_REGEX = new RegExp(
+  `^\\s*(${NUMERIC_PART})(\\s+${METRIC_UNIT}\\b)?\\s+(.+)$`,
+  "i"
+);
 
 export function splitIngredientLine(line: string): {
   name: string;
   quantity: string;
 } {
   const cleaned = line.replace(/\s+/g, " ").trim();
-  const match = cleaned.match(QUANTITY_REGEX);
+  const match = cleaned.match(QUANTITY_PREFIX_REGEX);
   if (match) {
-    const quantity = match[1].trim();
-    const name = match[2].trim();
+    const number = match[1].trim();
+    const unit = match[2]?.trim();
+    const quantity = unit ? `${number} ${unit}` : number;
+    const name = match[3].replace(/^(?:de\s+|d['']\s*)/i, "").trim();
     if (name.length > 0) {
       return { name, quantity };
     }
@@ -149,8 +155,13 @@ export async function parseRecipeFromUrl(url: string): Promise<RecipeInput> {
   const name = asString(recipe.name) ?? "Recette importee";
   const description = asString(recipe.description);
   const servings = parseServings(recipe.recipeYield ?? recipe.yield);
-  const prepTime = parseDurationISO(recipe.prepTime);
-  const cookTime = parseDurationISO(recipe.cookTime);
+  const rawPrepTime = parseDurationISO(recipe.prepTime);
+  const rawCookTime = parseDurationISO(recipe.cookTime);
+  const totalTime = parseDurationISO(recipe.totalTime);
+
+  const prepTime = rawPrepTime;
+  const cookTime =
+    rawCookTime === null && rawPrepTime === null ? totalTime : rawCookTime;
   const ingredientsLines = asStringArray(recipe.recipeIngredient);
   const instructions = asStringArray(recipe.recipeInstructions).join("\n");
   const image = asString(recipe.image);
