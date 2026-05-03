@@ -62,7 +62,12 @@ export async function POST(request: NextRequest) {
     mealTypes,
     existingMeals: existingMeals
       .filter((m) => mealTypes.includes(m.mealType as "lunch" | "dinner"))
-      .map((m) => ({ date: m.date, mealType: m.mealType, recipeId: m.recipeId })),
+      .map((m) => ({
+        date: m.date,
+        mealType: m.mealType,
+        recipeId: m.recipeId,
+        diners: m.diners,
+      })),
     dinerConfigs,
     seasonOverride,
     slotFavorites,

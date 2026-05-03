@@ -101,6 +101,7 @@ export const plannedMeals = sqliteTable("planned_meals", {
   servingsMultiplier: real("servings_multiplier").notNull().default(1.0),
   diners: text("diners").notNull().default('["clement","nath","chloe","simon"]'),
   notes: text("notes"),
+  pinned: integer("pinned", { mode: "boolean" }).notNull().default(false),
 });
 
 export const diners = sqliteTable("diners", {

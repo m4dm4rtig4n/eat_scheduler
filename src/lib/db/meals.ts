@@ -13,6 +13,7 @@ export type PlannedMealWithRecipe = {
   servingsMultiplier: number;
   diners: Diner[];
   notes: string | null;
+  pinned: boolean;
   recipe: {
     id: number;
     name: string;
@@ -65,6 +66,7 @@ export async function listMealsBetween(
     servingsMultiplier: row.servingsMultiplier,
     diners: parseDiners(row.diners),
     notes: row.notes,
+    pinned: !!row.pinned,
     recipe: {
       id: row.recipe.id,
       name: row.recipe.name,
@@ -125,6 +127,7 @@ export async function updateMeal(
     set.servingsMultiplier = input.servingsMultiplier;
   if (input.diners !== undefined) set.diners = JSON.stringify(input.diners);
   if (input.notes !== undefined) set.notes = input.notes;
+  if (input.pinned !== undefined) set.pinned = input.pinned;
 
   if (Object.keys(set).length === 0) return;
 
@@ -135,6 +138,11 @@ export async function deleteMeal(id: number): Promise<void> {
   await (db as any).delete(plannedMeals).where(eq(plannedMeals.id, id));
 }
 
+/**
+ * Supprime les repas dans la fenêtre. Les repas épinglés (`pinned = true`)
+ * sont préservés : c'est exactement le contrat du pin côté UI ("ne touche
+ * pas ce repas lors de la régénération").
+ */
 export async function deleteMealsBetween(
   startDate: string,
   endDate: string,
@@ -143,6 +151,7 @@ export async function deleteMealsBetween(
   const conditions = [
     gte(plannedMeals.date, startDate),
     lte(plannedMeals.date, endDate),
+    eq(plannedMeals.pinned, false),
   ];
   if (mealTypes && mealTypes.length > 0) {
     conditions.push(inArray(plannedMeals.mealType, mealTypes));

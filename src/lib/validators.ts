@@ -60,6 +60,7 @@ export const plannedMealSchema = z.object({
   servingsMultiplier: z.coerce.number().positive().default(1),
   diners: z.array(dinerSchema).min(1).default([]),
   notes: z.string().max(500).optional().nullable(),
+  pinned: z.boolean().default(false),
 });
 
 export type PlannedMealInput = z.infer<typeof plannedMealSchema>;

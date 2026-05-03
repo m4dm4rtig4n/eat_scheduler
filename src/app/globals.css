@@ -155,6 +155,23 @@ button {
   }
 }
 
+/* Cursor "main" sur tous les éléments interactifs activables.
+   Tailwind v4 ne le met pas par défaut sur <button>, et l'utilisateur web
+   est habitué à l'association cliquable = main. */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+[role="menuitem"],
+summary,
+label[for],
+select:not(:disabled),
+input[type="checkbox"]:not(:disabled),
+input[type="radio"]:not(:disabled),
+input[type="submit"]:not(:disabled),
+input[type="button"]:not(:disabled),
+input[type="reset"]:not(:disabled) {
+  cursor: pointer;
+}
+
 /* Scrollbar discrète */
 ::-webkit-scrollbar {
   width: 8px;

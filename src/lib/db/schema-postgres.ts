@@ -111,6 +111,7 @@ export const plannedMeals = pgTable("planned_meals", {
   servingsMultiplier: real("servings_multiplier").notNull().default(1.0),
   diners: text("diners").notNull().default('["clement","nath","chloe","simon"]'),
   notes: text("notes"),
+  pinned: boolean("pinned").notNull().default(false),
 });
 
 export const diners = pgTable("diners", {

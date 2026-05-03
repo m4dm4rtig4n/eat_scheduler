@@ -24,7 +24,15 @@ export type GenerationContext = {
   startDate: string;
   endDate: string;
   mealTypes: MealType[];
-  existingMeals: Array<{ date: string; mealType: string; recipeId: number }>;
+  // Les meals déjà présents dans la fenêtre (typiquement : pinned survivants
+  // après un mode replace, ou tout le contenu en mode fill). On y inclut
+  // les `diners` pour pouvoir compléter un slot partiellement couvert.
+  existingMeals: Array<{
+    date: string;
+    mealType: string;
+    recipeId: number;
+    diners: Diner[];
+  }>;
   // Configurations complètes (avec unavailableSlots) plutôt que seulement les keys :
   // le filtrage de présence se fait par créneau, donc on a besoin de la config.
   dinerConfigs: DinerConfig[];
@@ -162,11 +170,19 @@ export function generateWeekPlan(
   const slots: GeneratedSlot[] = [];
 
   const existingByKey = new Map<string, number[]>();
+  // Map : "{date}|{mealType}" → ensemble des diners déjà servis par les meals
+  // existants de ce slot. Permet de compléter un slot partiellement couvert
+  // (cas typique : meal pinné qui sert seulement Nath, on doit générer un
+  // 2e plat pour Clément/Chloé/Simon).
+  const coveredDinersByKey = new Map<string, Set<Diner>>();
   for (const m of ctx.existingMeals) {
     const k = `${m.date}|${m.mealType}`;
     if (!existingByKey.has(k)) existingByKey.set(k, []);
     existingByKey.get(k)!.push(m.recipeId);
     usedThisWeek.add(m.recipeId);
+    if (!coveredDinersByKey.has(k)) coveredDinersByKey.set(k, new Set());
+    const set = coveredDinersByKey.get(k)!;
+    for (const d of m.diners) set.add(d);
   }
 
   // Index favoris par (jour × créneau).
@@ -193,7 +209,18 @@ export function generateWeekPlan(
     const dayOfWeek = getDayOfWeekFromIso(date);
     for (const mealType of ctx.mealTypes) {
       const slotKey = `${date}|${mealType}`;
-      if ((existingByKey.get(slotKey) ?? []).length > 0) continue;
+      // Si tous les convives du slot sont déjà servis par un/des meals
+      // existants (pinned), pas besoin de générer. Sinon on traite le slot
+      // pour compléter avec les convives manquants.
+      const slotDinersForCheck = dinersForSlot(dayOfWeek, mealType);
+      const covered = coveredDinersByKey.get(slotKey);
+      if (
+        slotDinersForCheck.length > 0 &&
+        covered &&
+        slotDinersForCheck.every((d) => covered.has(d))
+      ) {
+        continue;
+      }
       const hasFavorites =
         (favoritesByKey.get(`${dayOfWeek}|${mealType}`)?.size ?? 0) > 0 ||
         (pinnedByKey.get(`${dayOfWeek}|${mealType}`)?.length ?? 0) > 0;
@@ -210,17 +237,25 @@ export function generateWeekPlan(
     const slotSeason =
       ctx.seasonOverride ?? getSeasonFromDate(new Date(date));
     const dayOfWeek = getDayOfWeekFromIso(date);
+    const slotKey = `${date}|${mealType}`;
 
     // Convives présents par défaut sur ce créneau (jour × midi/soir).
     // Si tout le monde est marqué absent en réglages, on skip purement et
     // simplement ce slot — comportement choisi : pas de repas créé du tout.
-    const slotDiners = dinersForSlot(dayOfWeek, mealType);
-    if (slotDiners.length === 0) continue;
+    const allSlotDiners = dinersForSlot(dayOfWeek, mealType);
+    if (allSlotDiners.length === 0) continue;
 
-    // Cas spécial : pinned. Placement direct, pas de scoring.
-    // Un pin gagne sur tout (saison, dislikes), c'est l'intention explicite.
+    // Soustrait les convives déjà servis par les meals existants (pinned).
+    const covered = coveredDinersByKey.get(slotKey) ?? new Set<Diner>();
+    const slotDiners = allSlotDiners.filter((d) => !covered.has(d));
+    if (slotDiners.length === 0) continue;
+    const isPartiallyCovered = covered.size > 0;
+
+    // Cas spécial : pinned-favori (slot favori épinglé). On ne le déclenche
+    // PAS si le slot a déjà des meals (pinned-meal), pour éviter d'empiler
+    // un meal-favori par-dessus un meal pinné par l'utilisateur.
     const pinnedIds = pinnedByKey.get(`${dayOfWeek}|${mealType}`);
-    if (pinnedIds && pinnedIds.length > 0) {
+    if (!isPartiallyCovered && pinnedIds && pinnedIds.length > 0) {
       const pinnedMeals: PlannedMealInput[] = [];
       for (const id of pinnedIds) {
         const recipe = ctx.recipes.find((r) => r.id === id);
@@ -235,6 +270,7 @@ export function generateWeekPlan(
           servingsMultiplier: 1,
           diners: accepted,
           notes: null,
+          pinned: false,
         });
         usedThisWeek.add(recipe.id);
       }
@@ -329,6 +365,7 @@ export function generateWeekPlan(
             servingsMultiplier: 1,
             diners: picked.accepted,
             notes: null,
+            pinned: false,
           });
           usedThisWeek.add(picked.recipe.id);
           remainingDiners = remainingDiners.filter(
@@ -350,6 +387,7 @@ export function generateWeekPlan(
           servingsMultiplier: 1,
           diners: picked.accepted,
           notes: null,
+          pinned: false,
         });
         usedThisWeek.add(picked.recipe.id);
         remainingDiners = remainingDiners.filter(

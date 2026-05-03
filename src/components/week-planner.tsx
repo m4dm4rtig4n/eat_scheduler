@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useEffect } from "react";
+import { useState, useTransition, useEffect, useRef } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -15,6 +15,8 @@ import {
   Users,
   Clock,
   Pin,
+  MoreVertical,
+  ArrowRightLeft,
 } from "lucide-react";
 import { RecipeFilterChips } from "@/components/recipe-filter-chips";
 import { Button } from "@/components/ui/button";
@@ -102,7 +104,19 @@ export function WeekPlanner({
   const [generating, setGenerating] = useState(false);
   const [generateOpen, setGenerateOpen] = useState(false);
   const [slotFavorites, setSlotFavorites] = useState<SlotFavorite[]>([]);
+  // ID du repas source d'un swap en cours. null = pas de swap actif.
+  const [swapSourceMealId, setSwapSourceMealId] = useState<number | null>(null);
   const [, startTransition] = useTransition();
+
+  // Échap annule un swap en cours
+  useEffect(() => {
+    if (swapSourceMealId === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSwapSourceMealId(null);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [swapSourceMealId]);
 
   const loadFavorites = () => {
     fetch("/api/slot-favorites")
@@ -197,10 +211,13 @@ export function WeekPlanner({
         const servingsMultiplier =
           recipe && recipe.servings > 0 ? shares / recipe.servings : 1;
 
-        // Transfert : retirer ces diners des sibling meals où ils sont déjà
+        // Transfert : retirer ces diners des sibling meals où ils sont déjà.
+        // On skip les meals pinnés : ils sont figés et leurs diners ne doivent
+        // jamais être modifiés implicitement.
         const toAssign = new Set(availableDiners);
         const siblingPatches: Promise<unknown>[] = [];
         for (const s of siblings) {
+          if (s.pinned) continue;
           const reduced = s.diners.filter((d) => !toAssign.has(d));
           if (reduced.length === s.diners.length) continue; // rien à retirer
           if (reduced.length === 0) continue; // ne pas vider le sibling
@@ -246,6 +263,9 @@ export function WeekPlanner({
   const toggleDiner = (mealId: number, diner: Diner) => {
     const meal = meals.find((m) => m.id === mealId);
     if (!meal) return;
+    // Un meal pinné est figé : on ignore les toggles sur ses diners.
+    // L'utilisateur doit désépingler d'abord pour modifier.
+    if (meal.pinned) return;
     const isPresent = meal.diners.includes(diner);
 
     // Calcul du nouvel état pour ce repas
@@ -276,7 +296,8 @@ export function WeekPlanner({
           m.id !== mealId &&
           m.date === meal.date &&
           m.mealType === meal.mealType &&
-          m.diners.includes(diner)
+          m.diners.includes(diner) &&
+          !m.pinned // ne jamais modifier les diners d'un meal pinné
       );
       for (const s of siblings) {
         const reduced = s.diners.filter((d) => d !== diner);
@@ -318,6 +339,100 @@ export function WeekPlanner({
   const removeMeal = (mealId: number) => {
     setMeals((curr) => curr.filter((m) => m.id !== mealId));
     fetch(`/api/meals/${mealId}`, { method: "DELETE" });
+  };
+
+  // Toggle l'état pinned d'un repas (préservé lors de la régénération).
+  const togglePin = (mealId: number) => {
+    const meal = meals.find((m) => m.id === mealId);
+    if (!meal) return;
+    const next = !meal.pinned;
+    setMeals((curr) =>
+      curr.map((m) => (m.id === mealId ? { ...m, pinned: next } : m))
+    );
+    fetch(`/api/meals/${mealId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pinned: next }),
+    });
+  };
+
+  // Exécute l'échange entre le meal source et le slot cible.
+  // Cas 1 (slot cible vide) : déplace simplement le meal vers le nouveau slot.
+  // Cas 2 (slot cible avec meals) : permute les `recipeId` entre source et
+  // premier meal du slot cible. Les autres meals du slot cible restent.
+  const executeSwap = (targetDate: string, targetMealType: MealSlot) => {
+    if (swapSourceMealId === null) return;
+    const source = meals.find((m) => m.id === swapSourceMealId);
+    if (!source) {
+      setSwapSourceMealId(null);
+      return;
+    }
+    // Un meal pinné ne peut pas être déplacé (sa date / mealType est figée).
+    // L'utilisateur doit désépingler avant de pouvoir échanger.
+    if (source.pinned) {
+      setSwapSourceMealId(null);
+      return;
+    }
+    // Pas de swap "sur soi-même"
+    if (source.date === targetDate && source.mealType === targetMealType) {
+      setSwapSourceMealId(null);
+      return;
+    }
+
+    const targetMeals = meals.filter(
+      (m) => m.date === targetDate && m.mealType === targetMealType
+    );
+
+    // Si le slot cible contient un meal pinné, on annule l'échange : on ne
+    // veut pas écraser sa recette. (On pourrait permuter avec un meal non
+    // pinné du slot, mais c'est peu intuitif. Plus simple : refuser.)
+    if (targetMeals.some((m) => m.pinned)) {
+      setSwapSourceMealId(null);
+      return;
+    }
+
+    if (targetMeals.length === 0) {
+      // Cas 1 : déplacement simple
+      setMeals((curr) =>
+        curr.map((m) =>
+          m.id === source.id
+            ? { ...m, date: targetDate, mealType: targetMealType }
+            : m
+        )
+      );
+      fetch(`/api/meals/${source.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: targetDate,
+          mealType: targetMealType,
+        }),
+      });
+    } else {
+      // Cas 2 : permutation des recettes entre source et premier meal cible
+      const target = targetMeals[0];
+      setMeals((curr) =>
+        curr.map((m) => {
+          if (m.id === source.id) return { ...m, recipeId: target.recipeId, recipe: target.recipe };
+          if (m.id === target.id) return { ...m, recipeId: source.recipeId, recipe: source.recipe };
+          return m;
+        })
+      );
+      Promise.all([
+        fetch(`/api/meals/${source.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ recipeId: target.recipeId }),
+        }),
+        fetch(`/api/meals/${target.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ recipeId: source.recipeId }),
+        }),
+      ]);
+    }
+
+    setSwapSourceMealId(null);
   };
 
   const [regeneratingSlot, setRegeneratingSlot] = useState<string | null>(null);
@@ -498,6 +613,23 @@ export function WeekPlanner({
         </div>
       )}
 
+      {swapSourceMealId !== null && (
+        <div className="sticky top-0 z-30 mb-3 flex items-center gap-2 px-3 py-2.5 rounded-[var(--radius-lg)] bg-primary text-primary-foreground shadow-lift animate-[fade-in_0.15s_ease-out]">
+          <ArrowRightLeft className="size-4 shrink-0" />
+          <span className="flex-1 text-sm font-medium">
+            Choisis le slot cible — Échap pour annuler
+          </span>
+          <button
+            type="button"
+            onClick={() => setSwapSourceMealId(null)}
+            className="size-7 inline-flex items-center justify-center rounded-full bg-white/20 hover:bg-white/30 transition-colors"
+            aria-label="Annuler l'échange"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+      )}
+
       <div className="flex gap-2 mb-5">
         <Button
           variant="primary"
@@ -630,20 +762,47 @@ export function WeekPlanner({
                   const slotMeals = findMeals(dateISO, slot);
                   const meta = SLOT_META[slot];
                   const SlotIcon = meta.icon;
+                  // Slot peut accueillir un swap si un swap est actif ET que
+                  // ce slot n'est pas celui de la source elle-même.
+                  const swapSource =
+                    swapSourceMealId !== null
+                      ? meals.find((m) => m.id === swapSourceMealId)
+                      : null;
+                  const isSwapSource =
+                    !!swapSource &&
+                    swapSource.date === dateISO &&
+                    swapSource.mealType === slot;
+                  const isSwapTarget =
+                    swapSourceMealId !== null && !isSwapSource && !isPast;
                   return (
                     <section
                       key={slot}
                       aria-labelledby={`slot-${dateISO}-${slot}`}
                       className={cn(
-                        "rounded-[var(--radius-lg)] border overflow-hidden flex flex-col",
+                        "relative rounded-[var(--radius-lg)] border overflow-hidden flex flex-col",
                         // Sur desktop, étire la section pour remplir la row du
                         // subgrid parent → frontières Midi/Soir alignées entre cards.
                         "lg:h-full",
                         meta.bg,
                         "border-transparent ring-1",
-                        meta.ring
+                        meta.ring,
+                        isSwapTarget &&
+                          "ring-2 ring-primary/60 cursor-pointer hover:ring-primary"
                       )}
                     >
+                      {isSwapTarget && (
+                        <button
+                          type="button"
+                          onClick={() => executeSwap(dateISO, slot)}
+                          className="absolute inset-0 z-20 flex items-center justify-center bg-primary/10 hover:bg-primary/20 backdrop-blur-[1px] transition-colors"
+                          aria-label={`Échanger avec ${meta.label} ${dateISO}`}
+                        >
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary text-primary-foreground text-xs font-semibold shadow-lift">
+                            <ArrowRightLeft className="size-3.5" />
+                            Échanger ici
+                          </span>
+                        </button>
+                      )}
                       <header
                         className={cn(
                           "flex items-center gap-2 px-3 py-2 border-b border-border/40 bg-card/40 backdrop-blur-sm"
@@ -685,7 +844,10 @@ export function WeekPlanner({
                                 key={meal.id}
                                 meal={meal}
                                 readOnly={isPast}
-                                pinned={isMealPinned(meal)}
+                                pinned={
+                                  isMealPinned(meal) || meal.pinned
+                                }
+                                swapHighlight={swapSourceMealId === meal.id}
                                 onReplace={() =>
                                   setPicker({
                                     date: dateISO,
@@ -695,6 +857,10 @@ export function WeekPlanner({
                                 }
                                 onToggleDiner={(d) => toggleDiner(meal.id, d)}
                                 onRemove={() => removeMeal(meal.id)}
+                                onTogglePin={() => togglePin(meal.id)}
+                                onStartSwap={() =>
+                                  setSwapSourceMealId(meal.id)
+                                }
                               />
                             ))}
                             {!isPast && (
@@ -742,12 +908,12 @@ export function WeekPlanner({
                             Aucun plat planifié
                           </div>
                         ) : (
-                          <div className="flex gap-1.5">
+                          <div className="flex gap-1.5 lg:flex-1">
                             <button
                               onClick={() =>
                                 setPicker({ date: dateISO, mealType: slot })
                               }
-                              className="group flex-1 h-full min-h-14 flex items-center gap-2 px-3 rounded-lg border border-dashed border-border hover:border-primary hover:bg-primary-soft/30 text-muted-foreground hover:text-primary transition-all"
+                              className="group flex-1 h-full min-h-14 lg:min-h-32 flex items-center justify-center gap-2 px-3 rounded-lg border border-dashed border-border hover:border-primary hover:bg-primary-soft/30 text-muted-foreground hover:text-primary transition-all"
                             >
                               <Plus className="size-4 transition-transform group-hover:rotate-90" />
                               <span className="text-sm">Choisir un plat…</span>
@@ -758,7 +924,7 @@ export function WeekPlanner({
                                 regeneratingSlot === `${dateISO}|${slot}` ||
                                 recipes.length === 0
                               }
-                              className="inline-flex items-center justify-center min-h-14 px-3 rounded-lg border border-dashed border-border hover:border-primary hover:bg-primary-soft/30 text-muted-foreground hover:text-primary transition-all disabled:opacity-50"
+                              className="inline-flex items-center justify-center min-h-14 lg:min-h-32 px-3 rounded-lg border border-dashed border-border hover:border-primary hover:bg-primary-soft/30 text-muted-foreground hover:text-primary transition-all disabled:opacity-50"
                               title="Générer un plat pour ce créneau"
                               aria-label="Générer un plat pour ce créneau"
                             >
@@ -965,16 +1131,23 @@ function MealCard({
   meal,
   readOnly = false,
   pinned = false,
+  swapHighlight = false,
   onReplace,
   onToggleDiner,
   onRemove,
+  onTogglePin,
+  onStartSwap,
 }: {
   meal: PlannedMealWithRecipe;
   readOnly?: boolean;
   pinned?: boolean;
+  /** Met en évidence la carte source pendant un swap en cours. */
+  swapHighlight?: boolean;
   onReplace?: () => void;
   onToggleDiner: (diner: Diner) => void;
   onRemove: () => void;
+  onTogglePin?: () => void;
+  onStartSwap?: () => void;
 }) {
   const dinersConfig = useDiners();
   const dinerKeys = activeDinerKeys(dinersConfig);
@@ -982,6 +1155,47 @@ function MealCard({
   const sharesLabel = shares.toFixed(shares % 1 === 0 ? 0 : 1);
   const canReplace = !readOnly && !!onReplace;
   const presentSet = new Set(meal.diners);
+  const [menuOpen, setMenuOpen] = useState(false);
+  // Position du menu en coordonnées viewport (position: fixed) — nécessaire
+  // car la MealCard parente a overflow-hidden qui rognerait un menu absolute.
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(
+    null
+  );
+  const kebabRef = useRef<HTMLButtonElement>(null);
+
+  // Calcule la position du menu juste après ouverture
+  const openMenu = () => {
+    const rect = kebabRef.current?.getBoundingClientRect();
+    if (rect) {
+      // Aligné sous le bouton, à droite (le menu s'étend vers la gauche via -translate-x)
+      setMenuPos({
+        top: rect.bottom + 4,
+        left: rect.right,
+      });
+    }
+    setMenuOpen(true);
+  };
+
+  // Ferme le menu au clic extérieur ou Échap
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest("[data-meal-menu]")) setMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    const onScroll = () => setMenuOpen(false);
+    document.addEventListener("click", onClickOutside);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", onScroll, true);
+    return () => {
+      document.removeEventListener("click", onClickOutside);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onScroll, true);
+    };
+  }, [menuOpen]);
 
   return (
     <div
@@ -990,17 +1204,91 @@ function MealCard({
         pinned
           ? "border-primary/40 bg-primary-soft/20"
           : "border-border",
-        !readOnly && "hover:border-border-strong"
+        !readOnly && "hover:border-border-strong",
+        swapHighlight && "ring-2 ring-primary shadow-lift"
       )}
     >
       {!readOnly && (
-        <button
-          onClick={onRemove}
-          className="absolute top-2 right-2 size-7 flex items-center justify-center rounded-full text-white/90 bg-black/30 hover:bg-danger hover:text-white backdrop-blur-sm transition-colors z-10"
-          aria-label="Retirer"
-        >
-          <X className="size-4" />
-        </button>
+        <div className="absolute top-2 right-2 z-10" data-meal-menu>
+          <button
+            ref={kebabRef}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (menuOpen) setMenuOpen(false);
+              else openMenu();
+            }}
+            className="size-7 flex items-center justify-center rounded-full text-white/90 bg-black/30 hover:bg-black/50 backdrop-blur-sm transition-colors"
+            aria-label="Plus d'actions"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+          >
+            <MoreVertical className="size-4" />
+          </button>
+          {menuOpen && menuPos && (
+            <div
+              role="menu"
+              data-meal-menu
+              style={{
+                position: "fixed",
+                top: menuPos.top,
+                left: menuPos.left,
+                transform: "translateX(-100%)",
+              }}
+              className="z-50 min-w-44 rounded-lg border border-border bg-card shadow-lift py-1 animate-[fade-in_0.12s_ease-out]"
+            >
+              {onTogglePin && (
+                <button
+                  role="menuitem"
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuOpen(false);
+                    onTogglePin();
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted text-left"
+                >
+                  <Pin
+                    className={cn(
+                      "size-4",
+                      pinned ? "fill-primary text-primary" : "text-muted-foreground"
+                    )}
+                  />
+                  {pinned ? "Désépingler" : "Épingler"}
+                </button>
+              )}
+              {onStartSwap && (
+                <button
+                  role="menuitem"
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuOpen(false);
+                    onStartSwap();
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-muted text-left"
+                >
+                  <ArrowRightLeft className="size-4 text-muted-foreground" />
+                  Échanger avec…
+                </button>
+              )}
+              <div className="my-1 border-t border-border" />
+              <button
+                role="menuitem"
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenuOpen(false);
+                  onRemove();
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-danger hover:bg-danger-soft text-left"
+              >
+                <X className="size-4" />
+                Retirer
+              </button>
+            </div>
+          )}
+        </div>
       )}
       {pinned && (
         <span className="absolute top-2 left-2 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.18em] text-white px-2 py-0.5 rounded-full bg-primary backdrop-blur-sm shadow-soft z-10">

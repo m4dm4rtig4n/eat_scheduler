@@ -71,6 +71,13 @@
       "when": 1777627783922,
       "tag": "0009_nice_scarlet_spider",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1777800000000,
+      "tag": "0010_planned_meal_pinned",
+      "breakpoints": true
     }
   ]
 }
