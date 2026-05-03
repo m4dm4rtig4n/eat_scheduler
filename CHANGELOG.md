@@ -1,3 +1,9 @@
+## [1.10.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.9.0...v1.10.0) (2026-05-03)
+
+### Features
+
+* ajouter la fonctionnalité d'épinglage des repas pour préserver leur état lors de la régénération ([e4feecd](https://github.com/m4dm4rtig4n/eat_scheduler/commit/e4feecda31dce4deedeaff4d29a3dc154af1acdb))
+
 ## [1.9.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.8.0...v1.9.0) (2026-05-03)
 
 ### Features
