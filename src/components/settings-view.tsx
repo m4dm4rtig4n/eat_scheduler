@@ -11,6 +11,7 @@ import {
   RotateCcw,
   Users,
   Loader2,
+  LogOut,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
@@ -30,8 +31,10 @@ type FullDiner = DinerConfig & { id: number };
 
 export function SettingsView({
   initialDiners,
+  authEnabled,
 }: {
   initialDiners: DinerConfig[];
+  authEnabled: boolean;
 }) {
   const { refresh } = useDinersContext();
   const [diners, setDiners] = useState<FullDiner[]>(
@@ -200,7 +203,48 @@ export function SettingsView({
         calcul du nombre de portions d'un repas. <br />
         Un adulte = 1, un enfant = 0,5 (par défaut).
       </p>
+
+      {authEnabled && (
+        <section>
+          <h2 className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground mb-3">
+            Compte
+          </h2>
+          <LogoutButton />
+        </section>
+      )}
     </div>
+  );
+}
+
+function LogoutButton() {
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleLogout = async () => {
+    setSubmitting(true);
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      // Le cookie sera de toute façon invalidé côté serveur ; on redirige.
+    }
+    // Hard redirect : force le middleware à revalider sans le cookie de session.
+    window.location.href = "/login";
+  };
+
+  return (
+    <Button
+      variant="outline"
+      size="md"
+      onClick={handleLogout}
+      disabled={submitting}
+      className="w-full"
+    >
+      {submitting ? (
+        <Loader2 className="size-4 animate-spin" />
+      ) : (
+        <LogOut className="size-4" />
+      )}
+      Se déconnecter
+    </Button>
   );
 }
 

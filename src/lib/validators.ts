@@ -57,8 +57,8 @@ export const plannedMealSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Format YYYY-MM-DD attendu"),
   mealType: z.enum(["lunch", "dinner"]),
   recipeId: z.coerce.number().int().positive(),
-  servingsMultiplier: z.coerce.number().positive().default(1),
-  diners: z.array(dinerSchema).min(1).default([]),
+  servingsMultiplier: z.coerce.number().nonnegative().default(1),
+  diners: z.array(dinerSchema).default([]),
   notes: z.string().max(500).optional().nullable(),
   pinned: z.boolean().default(false),
 });

@@ -2,6 +2,20 @@
 
 import { useState, useTransition, useEffect, useRef } from "react";
 import {
+  DndContext,
+  PointerSensor,
+  TouchSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  useDraggable,
+  useDroppable,
+  DragOverlay,
+  type DragEndEvent,
+  type DragStartEvent,
+  type DragOverEvent,
+} from "@dnd-kit/core";
+import {
   ChevronLeft,
   ChevronRight,
   Plus,
@@ -106,7 +120,29 @@ export function WeekPlanner({
   const [slotFavorites, setSlotFavorites] = useState<SlotFavorite[]>([]);
   // ID du repas source d'un swap en cours. null = pas de swap actif.
   const [swapSourceMealId, setSwapSourceMealId] = useState<number | null>(null);
+  // ID du meal en cours de drag (null sinon). Utilisé pour le DragOverlay.
+  const [draggingMealId, setDraggingMealId] = useState<number | null>(null);
+  // ID du slot actuellement survolé pendant un drag (`{date}|{mealType}` ou null).
+  // Sert à calculer quelle MealCard affichera l'overlay « sera remplacée ».
+  const [dragOverSlotId, setDragOverSlotId] = useState<string | null>(null);
+  // ID du meal précisément survolé pendant un drag (carte sous le pointeur).
+  // Quand non-null, l'overlay « sera remplacée » se pose sur cette carte
+  // précise au lieu de tomber par défaut sur la 1re non-pinnée du slot.
+  const [dragOverMealId, setDragOverMealId] = useState<number | null>(null);
   const [, startTransition] = useTransition();
+
+  // Sensors @dnd-kit : Pointer (souris+stylus, activation à 8px) + Touch
+  // (mobile, activation après 200ms long-press pour ne pas confondre avec
+  // un scroll vertical) + Keyboard (accessibilité).
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 200, tolerance: 8 },
+    }),
+    useSensor(KeyboardSensor)
+  );
 
   // Échap annule un swap en cours
   useEffect(() => {
@@ -199,13 +235,9 @@ export function WeekPlanner({
           dow,
           picker.mealType
         );
-        let availableDiners = presentByDefault.filter((d) => !taken.has(d));
-        // Fallback : si tout le monde est déjà pris OU absent par défaut,
-        // on prend juste le premier convive actif pour respecter le validator
-        // (min 1). L'utilisateur pourra ajuster manuellement.
-        if (availableDiners.length === 0 && dinerKeysActive.length > 0) {
-          availableDiners = [dinerKeysActive[0]];
-        }
+        const availableDiners = presentByDefault.filter((d) => !taken.has(d));
+        // Si tout le monde est déjà pris OU absent par défaut, on crée le repas
+        // sans convive. L'utilisateur pourra en ajouter manuellement.
         const recipe = recipes.find((r) => r.id === recipeId);
         const shares = totalShares(dinersConfig, availableDiners);
         const servingsMultiplier =
@@ -220,7 +252,6 @@ export function WeekPlanner({
           if (s.pinned) continue;
           const reduced = s.diners.filter((d) => !toAssign.has(d));
           if (reduced.length === s.diners.length) continue; // rien à retirer
-          if (reduced.length === 0) continue; // ne pas vider le sibling
           const orderedReduced = dinerKeysActive.filter((d) =>
             reduced.includes(d)
           );
@@ -263,9 +294,9 @@ export function WeekPlanner({
   const toggleDiner = (mealId: number, diner: Diner) => {
     const meal = meals.find((m) => m.id === mealId);
     if (!meal) return;
-    // Un meal pinné est figé : on ignore les toggles sur ses diners.
-    // L'utilisateur doit désépingler d'abord pour modifier.
-    if (meal.pinned) return;
+    // TODO(toi) : explique en 1-2 lignes la nouvelle sémantique du pin
+    // vis-à-vis des convives, pourquoi modifier les parts reste autorisé
+    // alors que la recette et la position restent figées par le pin.
     const isPresent = meal.diners.includes(diner);
 
     // Calcul du nouvel état pour ce repas
@@ -275,7 +306,6 @@ export function WeekPlanner({
     const orderedThis = dinerKeysActive.filter((d) =>
       nextDinersThis.includes(d)
     );
-    if (orderedThis.length === 0) return; // au moins un convive
     const sharesThis = totalShares(dinersConfig, orderedThis);
     const multiplierThis = sharesThis / meal.recipe.servings;
 
@@ -301,7 +331,6 @@ export function WeekPlanner({
       );
       for (const s of siblings) {
         const reduced = s.diners.filter((d) => d !== diner);
-        if (reduced.length === 0) continue; // on n'enlève pas le dernier convive
         const ordered = dinerKeysActive.filter((d) => reduced.includes(d));
         const shares = totalShares(dinersConfig, ordered);
         updates.push({
@@ -435,6 +464,227 @@ export function WeekPlanner({
     setSwapSourceMealId(null);
   };
 
+  // Détermine quel meal du slot survolé sera VISUELLEMENT remplacé par le
+  // drag en cours (overlay « sera remplacée »).
+  //
+  // Doit refléter EXACTEMENT la branche swap de `executeDragDrop` : si
+  // l'utilisateur lâche, est-ce qu'un swap (échange de recipeId) aura lieu
+  // et quelle est la cible exacte ? Si pas de cible (drop dans le vide),
+  // retourner null → ce sera un déplacement simple (cohabitation).
+  //
+  // Note : l'état `pinned` ne bloque pas le swap. Le pin protège un créneau
+  // contre la régénération auto, pas contre une action manuelle utilisateur.
+  const getReplacedMealId = (
+    sourceMealId: number,
+    overSlot: { date: string; mealType: MealSlot } | null,
+    overMealId: number | null
+  ): number | null => {
+    const source = meals.find((m) => m.id === sourceMealId);
+    if (!source) return null;
+
+    // Cas prioritaire : on survole une carte précise. C'est elle la cible
+    // si elle est différente de la source. L'état pinned ne bloque plus :
+    // un swap conserve les pin sur les positions (les recettes voyagent).
+    if (overMealId !== null) {
+      const overMeal = meals.find((m) => m.id === overMealId);
+      if (!overMeal) return null;
+      if (overMeal.id === source.id) return null;
+      return overMeal.id;
+    }
+
+    // Sinon : on survole l'espace vide d'un slot. Pas de remplacement
+    // (cohabitation par défaut), sauf cas legacy : slot avec exactement
+    // une carte → on garde le swap implicite (peu importe son état pin).
+    if (!overSlot) return null;
+    if (source.date === overSlot.date && source.mealType === overSlot.mealType)
+      return null;
+    const targetMeals = meals.filter(
+      (m) => m.date === overSlot.date && m.mealType === overSlot.mealType
+    );
+    if (targetMeals.length !== 1) return null;
+    return targetMeals[0]!.id;
+  };
+
+  // Variante de executeSwap utilisée par le drag & drop.
+  // Sémantique du swap : on échange recipeId, recipe ET pinned entre source
+  // et cible. Le pin "voyage avec le plat" : si tu drag un plat pinné, son
+  // pin part avec lui. C'est cohérent avec l'intention utilisateur ("j'ai
+  // épinglé CETTE recette pour cette semaine, où qu'elle aille").
+  // Si pas de cible (drop dans le vide), c'est un déplacement simple (move),
+  // qui conserve naturellement le pinned car le source garde ses attributs.
+  const executeDragDrop = (
+    sourceMealId: number,
+    targetDate: string,
+    targetMealType: MealSlot,
+    targetMealId: number | null
+  ) => {
+    const source = meals.find((m) => m.id === sourceMealId);
+    if (!source) return;
+    if (source.date === targetDate && source.mealType === targetMealType) return;
+
+    // Cible explicite : la carte précise sous le pointeur. Sinon, fallback
+    // sur l'unique carte du slot (s'il n'en a qu'une), sinon pas de cible
+    // → déplacement simple. Cohérent avec getReplacedMealId.
+    const targetMeals = meals.filter(
+      (m) => m.date === targetDate && m.mealType === targetMealType
+    );
+    const explicitTarget =
+      targetMealId !== null
+        ? targetMeals.find((m) => m.id === targetMealId)
+        : undefined;
+    const fallbackTarget =
+      targetMeals.length === 1 ? targetMeals[0] : undefined;
+    const swapTarget = explicitTarget ?? fallbackTarget;
+
+    if (swapTarget && swapTarget.id !== source.id) {
+      const target = swapTarget;
+      setMeals((curr) =>
+        curr.map((m) => {
+          if (m.id === source.id)
+            return {
+              ...m,
+              recipeId: target.recipeId,
+              recipe: target.recipe,
+              pinned: target.pinned,
+            };
+          if (m.id === target.id)
+            return {
+              ...m,
+              recipeId: source.recipeId,
+              recipe: source.recipe,
+              pinned: source.pinned,
+            };
+          return m;
+        })
+      );
+      Promise.all([
+        fetch(`/api/meals/${source.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            recipeId: target.recipeId,
+            pinned: target.pinned,
+          }),
+        }),
+        fetch(`/api/meals/${target.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            recipeId: source.recipeId,
+            pinned: source.pinned,
+          }),
+        }),
+      ]);
+      return;
+    }
+
+    // Sinon : déplacement simple du source vers target. Le source garde tous
+    // ses attributs (recipeId, diners, pinned, etc.), seul (date, mealType)
+    // change. Si la cible avait un pinné, ils cohabiteront sur le même slot.
+    setMeals((curr) =>
+      curr.map((m) =>
+        m.id === source.id
+          ? { ...m, date: targetDate, mealType: targetMealType }
+          : m
+      )
+    );
+    fetch(`/api/meals/${source.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        date: targetDate,
+        mealType: targetMealType,
+      }),
+    });
+  };
+
+  // Handlers DnD. Les IDs sont :
+  //  - draggable        : `meal:{id}` (un meal qu'on peut prendre)
+  //  - droppable slot   : `slot:{date}|{mealType}` (espace vide d'un slot)
+  //  - droppable carte  : `meal-target:{id}` (une carte précise dans un slot)
+  // dnd-kit privilégie automatiquement le droppable le plus imbriqué via la
+  // détection de collision, donc une carte l'emporte sur son slot parent.
+  const handleDragStart = (event: DragStartEvent) => {
+    const id = String(event.active.id);
+    if (id.startsWith("meal:")) {
+      setDraggingMealId(parseInt(id.slice(5), 10));
+    }
+  };
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const overId = event.over ? String(event.over.id) : null;
+    if (!overId) {
+      setDragOverSlotId(null);
+      setDragOverMealId(null);
+      return;
+    }
+    if (overId.startsWith("meal-target:")) {
+      const overMealId = parseInt(overId.slice("meal-target:".length), 10);
+      setDragOverMealId(overMealId);
+      const overMeal = meals.find((m) => m.id === overMealId);
+      setDragOverSlotId(
+        overMeal ? `${overMeal.date}|${overMeal.mealType}` : null
+      );
+      return;
+    }
+    if (overId.startsWith("slot:")) {
+      setDragOverSlotId(overId.slice(5));
+      setDragOverMealId(null);
+      return;
+    }
+    setDragOverSlotId(null);
+    setDragOverMealId(null);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const overMealIdAtEnd = dragOverMealId;
+    setDraggingMealId(null);
+    setDragOverSlotId(null);
+    setDragOverMealId(null);
+
+    const { active, over } = event;
+    if (!over) return;
+    const sourceId = String(active.id);
+    if (!sourceId.startsWith("meal:")) return;
+    const mealId = parseInt(sourceId.slice(5), 10);
+
+    const targetId = String(over.id);
+    if (targetId.startsWith("meal-target:")) {
+      const overMealId = parseInt(targetId.slice("meal-target:".length), 10);
+      const overMeal = meals.find((m) => m.id === overMealId);
+      if (!overMeal) return;
+      executeDragDrop(
+        mealId,
+        overMeal.date,
+        overMeal.mealType as MealSlot,
+        overMealId
+      );
+      return;
+    }
+    if (targetId.startsWith("slot:")) {
+      const [date, mealType] = targetId.slice(5).split("|") as [
+        string,
+        MealSlot
+      ];
+      executeDragDrop(mealId, date, mealType, overMealIdAtEnd);
+      return;
+    }
+  };
+
+  const draggedMeal =
+    draggingMealId !== null ? meals.find((m) => m.id === draggingMealId) : null;
+
+  // Parse `dragOverSlotId` ("date|mealType") en objet typé pour `getReplacedMealId`.
+  const overSlotParsed = (() => {
+    if (!dragOverSlotId) return null;
+    const [date, mealType] = dragOverSlotId.split("|") as [string, MealSlot];
+    return { date, mealType };
+  })();
+  const replacedMealId =
+    draggingMealId !== null
+      ? getReplacedMealId(draggingMealId, overSlotParsed, dragOverMealId)
+      : null;
+
   const [regeneratingSlot, setRegeneratingSlot] = useState<string | null>(null);
   const [showPast, setShowPast] = useState(false);
 
@@ -525,6 +775,17 @@ export function WeekPlanner({
   const filledSlots = new Set(meals.map((m) => `${m.date}-${m.mealType}`)).size;
 
   return (
+    <DndContext
+      sensors={sensors}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragEnd={handleDragEnd}
+      onDragCancel={() => {
+        setDraggingMealId(null);
+        setDragOverSlotId(null);
+        setDragOverMealId(null);
+      }}
+    >
     <div className="px-4 py-4">
       <div className="flex items-center justify-between gap-2 mb-4 bg-card-warm rounded-[var(--radius-lg)] px-2 py-3 border border-border shadow-soft">
         <Button
@@ -775,9 +1036,11 @@ export function WeekPlanner({
                   const isSwapTarget =
                     swapSourceMealId !== null && !isSwapSource && !isPast;
                   return (
-                    <section
+                    <DroppableSlot
                       key={slot}
-                      aria-labelledby={`slot-${dateISO}-${slot}`}
+                      slotId={`slot:${dateISO}|${slot}`}
+                      isPast={isPast}
+                      ariaLabelledby={`slot-${dateISO}-${slot}`}
                       className={cn(
                         "relative rounded-[var(--radius-lg)] border overflow-hidden flex flex-col",
                         // Sur desktop, étire la section pour remplir la row du
@@ -848,6 +1111,7 @@ export function WeekPlanner({
                                   isMealPinned(meal) || meal.pinned
                                 }
                                 swapHighlight={swapSourceMealId === meal.id}
+                                willBeReplaced={replacedMealId === meal.id}
                                 onReplace={() =>
                                   setPicker({
                                     date: dateISO,
@@ -937,7 +1201,7 @@ export function WeekPlanner({
                           </div>
                         )}
                       </div>
-                    </section>
+                    </DroppableSlot>
                   );
                 })}
               </div>
@@ -1093,6 +1357,107 @@ export function WeekPlanner({
         />
       )}
     </div>
+
+    {/* Aperçu qui suit le pointeur pendant le drag (DragOverlay = portal) */}
+    <DragOverlay dropAnimation={null}>
+      {draggedMeal ? (
+        <div className="rotate-2 opacity-90 shadow-lift">
+          <MealCardPreview meal={draggedMeal} pinned={draggedMeal.pinned} />
+        </div>
+      ) : null}
+    </DragOverlay>
+    </DndContext>
+  );
+}
+
+/**
+ * Wrapper droppable pour une <section> de slot. Utilise `useDroppable` de
+ * @dnd-kit pour s'enregistrer comme cible de drop. `isPast` désactive le drop
+ * sur les jours passés (qu'on n'autorise pas à modifier).
+ */
+function DroppableSlot({
+  slotId,
+  isPast,
+  ariaLabelledby,
+  className,
+  children,
+}: {
+  slotId: string;
+  isPast: boolean;
+  ariaLabelledby: string;
+  className: string;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: slotId,
+    disabled: isPast,
+  });
+  return (
+    <section
+      ref={setNodeRef}
+      aria-labelledby={ariaLabelledby}
+      className={cn(
+        className,
+        // Highlight visuel quand un drag est au-dessus (en plus du highlight
+        // du mode swap classique, qui utilise isSwapTarget).
+        isOver && "ring-2 ring-primary"
+      )}
+    >
+      {children}
+    </section>
+  );
+}
+
+/**
+ * Aperçu compact d'un meal pour le DragOverlay. Réutilise MealThumbnail
+ * et le titre, sans les contrôles ni les avatars (overlay = visuel pur).
+ */
+function MealCardPreview({
+  meal,
+  pinned,
+}: {
+  meal: PlannedMealWithRecipe;
+  pinned: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "relative bg-background border rounded-[var(--radius-lg)] overflow-hidden w-48",
+        pinned ? "border-primary/40 bg-primary-soft/20" : "border-border"
+      )}
+    >
+      {pinned && (
+        <span className="absolute top-2 left-2 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.18em] text-white px-2 py-0.5 rounded-full bg-primary backdrop-blur-sm shadow-soft z-10">
+          <Pin className="size-3" />
+          Épinglé
+        </span>
+      )}
+      {/* Layout fixe (pas de variante lg:) pour éviter que la thumbnail
+          prenne toute la largeur via `lg:w-full` héritée de MealThumbnail. */}
+      <div className="flex items-center gap-3 p-3">
+        <div className="size-16 shrink-0 rounded-lg overflow-hidden bg-muted ring-1 ring-border relative">
+          {meal.recipe.imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={meal.recipe.imageUrl}
+              alt={meal.recipe.name}
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-primary/20 via-gold-soft to-accent">
+              <span className="text-2xl font-black text-primary/70">
+                {meal.recipe.name.trim().charAt(0).toUpperCase() || "?"}
+              </span>
+            </div>
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold leading-tight tracking-tight line-clamp-2">
+            {meal.recipe.name}
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1132,6 +1497,7 @@ function MealCard({
   readOnly = false,
   pinned = false,
   swapHighlight = false,
+  willBeReplaced = false,
   onReplace,
   onToggleDiner,
   onRemove,
@@ -1143,6 +1509,8 @@ function MealCard({
   pinned?: boolean;
   /** Met en évidence la carte source pendant un swap en cours. */
   swapHighlight?: boolean;
+  /** Affiche un overlay « sera remplacée » pendant un drag survolant ce slot. */
+  willBeReplaced?: boolean;
   onReplace?: () => void;
   onToggleDiner: (diner: Diner) => void;
   onRemove: () => void;
@@ -1155,6 +1523,33 @@ function MealCard({
   const sharesLabel = shares.toFixed(shares % 1 === 0 ? 0 : 1);
   const canReplace = !readOnly && !!onReplace;
   const presentSet = new Set(meal.diners);
+
+  // Drag & drop : le card lui-même est draggable (sauf en lecture seule).
+  // Les boutons enfants (kebab, avatars, titre) gardent leur onClick : @dnd-kit
+  // ne déclenche le drag que si le pointeur bouge de >8px (PointerSensor
+  // activationConstraint), donc un click simple passe sans interférer.
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDraggableRef,
+    isDragging,
+  } = useDraggable({
+    id: `meal:${meal.id}`,
+    disabled: readOnly,
+  });
+  // Et la carte est aussi droppable : permet de cibler précisément CETTE
+  // carte comme destination du swap (au lieu de tomber sur la 1re du slot).
+  // Désactivé sur soi-même via `disabled` pour éviter un drop sur sa propre
+  // carte source (qui n'aurait aucun sens et perturberait la collision).
+  const { setNodeRef: setDroppableRef } = useDroppable({
+    id: `meal-target:${meal.id}`,
+    disabled: readOnly || isDragging,
+  });
+  // Merge des deux refs sur le même <div>.
+  const setNodeRef = (node: HTMLElement | null) => {
+    setDraggableRef(node);
+    setDroppableRef(node);
+  };
   const [menuOpen, setMenuOpen] = useState(false);
   // Position du menu en coordonnées viewport (position: fixed) — nécessaire
   // car la MealCard parente a overflow-hidden qui rognerait un menu absolute.
@@ -1199,15 +1594,31 @@ function MealCard({
 
   return (
     <div
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
       className={cn(
-        "group relative bg-background border rounded-[var(--radius-lg)] overflow-hidden transition-colors",
+        "group relative bg-background border rounded-[var(--radius-lg)] overflow-hidden transition-colors touch-none",
         pinned
           ? "border-primary/40 bg-primary-soft/20"
           : "border-border",
         !readOnly && "hover:border-border-strong",
-        swapHighlight && "ring-2 ring-primary shadow-lift"
+        swapHighlight && "ring-2 ring-primary shadow-lift",
+        willBeReplaced && "ring-4 ring-danger shadow-lift scale-[1.01]",
+        isDragging && "opacity-30"
       )}
     >
+      {willBeReplaced && (
+        <div
+          aria-hidden
+          className="absolute inset-0 z-30 flex items-center justify-center bg-danger/40 backdrop-blur-[2px] pointer-events-none rounded-[var(--radius-lg)] animate-[fade-in_0.15s_ease-out]"
+        >
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-danger text-white text-xs font-bold shadow-lift uppercase tracking-wider">
+            <ArrowRightLeft className="size-3.5" />
+            Sera remplacée
+          </span>
+        </div>
+      )}
       {!readOnly && (
         <div className="absolute top-2 right-2 z-10" data-meal-menu>
           <button
@@ -1327,47 +1738,62 @@ function MealCard({
         </div>
       </div>
 
-      <div className="flex items-center justify-start lg:justify-center gap-1 sm:gap-1.5 lg:gap-1 flex-wrap px-3 pb-3 pt-1 lg:px-2 lg:pb-2 border-t border-border/60">
-        {dinerKeys.map((d) => {
-          const isPresent = presentSet.has(d);
-          const coef = dinerCoefficient(dinersConfig, d);
-          const coefLabel = coef === 1 ? "" : `${coef}`;
-          return (
-            <button
-              key={d}
-              type="button"
-              disabled={readOnly}
-              onClick={() => onToggleDiner(d)}
-              className={cn(
-                "group/diner relative inline-flex items-center gap-1 sm:gap-1.5 lg:gap-0.5 px-1.5 sm:px-2 lg:px-1 h-8 lg:h-7 rounded-full border text-xs font-medium transition-all",
-                isPresent
-                  ? "bg-card border-border-strong shadow-soft"
-                  : "bg-muted/40 border-transparent text-muted-foreground/60 grayscale opacity-60 hover:opacity-100",
-                !readOnly && "cursor-pointer hover:scale-105 active:scale-95",
-                readOnly && "cursor-default"
-              )}
-              aria-pressed={isPresent}
-              title={`${dinerLabel(dinersConfig, d)} (${coef} part${coef <= 1 ? "" : "s"})`}
-            >
-              <span
+      <div className="px-3 pb-3 pt-1 lg:px-2 lg:pb-2 border-t border-border/60">
+        {(() => {
+          const presentDiners = dinerKeys.filter((d) => presentSet.has(d));
+          const absentDiners = dinerKeys.filter((d) => !presentSet.has(d));
+          const renderPill = (d: Diner) => {
+            const isPresent = presentSet.has(d);
+            const coef = dinerCoefficient(dinersConfig, d);
+            return (
+              <button
+                key={d}
+                type="button"
+                disabled={readOnly}
+                onClick={() => onToggleDiner(d)}
                 className={cn(
-                  "inline-flex items-center justify-center size-5 lg:size-4 rounded-full text-[10px] lg:text-[8px] font-bold text-white shrink-0",
-                  dinerColorBg(dinersConfig, d)
+                  "group/diner relative inline-flex items-center gap-1.5 sm:gap-2 lg:gap-1 px-2 sm:px-3 lg:px-1.5 h-12 lg:h-10 rounded-full border text-sm font-medium transition-all",
+                  isPresent
+                    ? "bg-card border-border-strong shadow-soft"
+                    : "bg-muted/40 border-transparent text-muted-foreground/60 grayscale opacity-60 hover:opacity-100",
+                  !readOnly && "cursor-pointer hover:scale-105 active:scale-95",
+                  readOnly && "cursor-default"
                 )}
+                aria-pressed={isPresent}
+                title={`${dinerLabel(dinersConfig, d)} (${coef} part${coef <= 1 ? "" : "s"})`}
               >
-                {dinerInitials(dinersConfig, d)}
-              </span>
-              <span className="hidden sm:inline lg:hidden">
-                {dinerLabel(dinersConfig, d)}
-              </span>
-              {coefLabel && (
-                <span className="text-[10px] lg:text-[9px] font-semibold text-muted-foreground tabular-nums">
-                  ×{coefLabel}
+                <span
+                  className={cn(
+                    "inline-flex items-center justify-center size-7 lg:size-6 rounded-full text-xs lg:text-[10px] font-bold text-white shrink-0",
+                    dinerColorBg(dinersConfig, d)
+                  )}
+                >
+                  {dinerInitials(dinersConfig, d)}
                 </span>
+                <span className="hidden sm:inline lg:hidden">
+                  {dinerLabel(dinersConfig, d)}
+                </span>
+              </button>
+            );
+          };
+          return (
+            <>
+              {presentDiners.length > 0 && (
+                <div className="flex items-center justify-start lg:justify-center gap-1 sm:gap-1.5 lg:gap-1 flex-wrap">
+                  {presentDiners.map(renderPill)}
+                </div>
               )}
-            </button>
+              {absentDiners.length > 0 && presentDiners.length > 0 && (
+                <div className="my-1.5 border-t border-border/40" aria-hidden />
+              )}
+              {absentDiners.length > 0 && (
+                <div className="flex items-center justify-start lg:justify-center gap-1 sm:gap-1.5 lg:gap-1 flex-wrap">
+                  {absentDiners.map(renderPill)}
+                </div>
+              )}
+            </>
           );
-        })}
+        })()}
       </div>
     </div>
   );

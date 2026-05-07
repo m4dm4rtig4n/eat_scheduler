@@ -87,6 +87,28 @@ export function clearFails(ip: string): void {
  * @returns état après l'incrément
  */
 export function registerFail(ip: string): BanStatus {
-  // À toi de jouer ! Voir le TODO ci-dessus.
-  throw new Error("Not implemented: complete src/lib/auth-ban.ts:registerFail");
+  const t = now();
+  const existing = records.get(ip);
+
+  const isExpiredBan = existing?.bannedUntil != null && existing.bannedUntil <= t;
+  const isOutOfWindow = existing != null && t - existing.lastFailAt > FAIL_WINDOW_MS;
+  const shouldReset = !existing || isExpiredBan || isOutOfWindow;
+
+  const count = shouldReset ? 1 : existing!.count + 1;
+  const firstFailAt = shouldReset ? t : existing!.firstFailAt;
+  const bannedUntil = count >= MAX_FAILS ? t + BAN_DURATION_MS : null;
+
+  records.set(ip, { count, firstFailAt, lastFailAt: t, bannedUntil });
+
+  if (bannedUntil) {
+    return {
+      banned: true,
+      retryAfterSeconds: Math.ceil((bannedUntil - t) / 1000),
+    };
+  }
+  return {
+    banned: false,
+    retryAfterSeconds: 0,
+    attemptsRemaining: Math.max(0, MAX_FAILS - count),
+  };
 }

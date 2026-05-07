@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { listDiners } from "@/lib/db/diners";
+import { isAuthEnabled } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { SettingsView } from "@/components/settings-view";
 
@@ -8,6 +9,7 @@ export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   const diners = await listDiners(true); // inclure archivés
+  const authEnabled = isAuthEnabled();
 
   return (
     <>
@@ -24,7 +26,7 @@ export default async function SettingsPage() {
           </Link>
         }
       />
-      <SettingsView initialDiners={diners} />
+      <SettingsView initialDiners={diners} authEnabled={authEnabled} />
     </>
   );
 }
