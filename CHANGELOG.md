@@ -1,3 +1,9 @@
+## [1.12.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.11.0...v1.12.0) (2026-05-07)
+
+### Features
+
+* add @dnd-kit/core for drag-and-drop functionality ([0afa5ad](https://github.com/m4dm4rtig4n/eat_scheduler/commit/0afa5adf1ac587262a83b72d7766e5e4f6d09f33))
+
 ## [1.11.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.10.0...v1.11.0) (2026-05-06)
 
 ### Features
