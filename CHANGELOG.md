@@ -1,3 +1,9 @@
+## [1.11.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.10.0...v1.11.0) (2026-05-06)
+
+### Features
+
+* ajouter la colonne "pinned" aux repas planifiés et mettre à jour les fichiers de métadonnées ([e7c0e26](https://github.com/m4dm4rtig4n/eat_scheduler/commit/e7c0e26c03d9ff42d654507adeeaf66e6b61cff2))
+
 ## [1.10.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.9.0...v1.10.0) (2026-05-03)
 
 ### Features
