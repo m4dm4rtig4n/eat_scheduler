@@ -1,3 +1,10 @@
+## [1.15.1](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.15.0...v1.15.1) (2026-05-10)
+
+### Bug Fixes
+
+* mettre à jour le gestionnaire de paquets à pnpm@10.33.4 ([1b8255f](https://github.com/m4dm4rtig4n/eat_scheduler/commit/1b8255f5ca6a0e17f93ba7762f8f125c36af9c9b))
+* supprimer la version spécifiée pour l'installation de pnpm dans les workflows CI et de release ([5dc9e5c](https://github.com/m4dm4rtig4n/eat_scheduler/commit/5dc9e5c4b3b96930a104f5e1c0a69b20aa3012ae))
+
 ## [1.15.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.14.0...v1.15.0) (2026-05-10)
 
 ### Features
