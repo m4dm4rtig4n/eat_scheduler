@@ -1,3 +1,9 @@
+## [1.16.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.15.1...v1.16.0) (2026-05-10)
+
+### Features
+
+* ajouter la gestion du mode de régénération des créneaux de repas dans le planificateur de semaine ([e873d66](https://github.com/m4dm4rtig4n/eat_scheduler/commit/e873d66eb62f386861fb8bc58990effc8c713ce5))
+
 ## [1.15.1](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.15.0...v1.15.1) (2026-05-10)
 
 ### Bug Fixes
