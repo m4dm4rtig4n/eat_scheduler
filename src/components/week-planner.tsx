@@ -718,7 +718,11 @@ export function WeekPlanner({
   const [regeneratingSlot, setRegeneratingSlot] = useState<string | null>(null);
   const [showPast, setShowPast] = useState(false);
 
-  const regenerateSlot = async (date: string, mealType: MealSlot) => {
+  const regenerateSlot = async (
+    date: string,
+    mealType: MealSlot,
+    mode: "fill" | "replace" = "replace"
+  ) => {
     const slotKey = `${date}|${mealType}`;
     setRegeneratingSlot(slotKey);
     // On exclut TOUTES les recettes déjà planifiées sur la semaine visible.
@@ -742,7 +746,7 @@ export function WeekPlanner({
         body: JSON.stringify({
           startDate: date,
           endDate: date,
-          mode: "replace",
+          mode,
           mealTypes: [mealType],
           excludeRecipeIds,
         }),
@@ -1367,6 +1371,18 @@ export function WeekPlanner({
           mode={picker.replaceMealId ? "replace" : "add"}
           onSelect={assignRecipe}
           onClose={() => setPicker(null)}
+          onGenerate={() => {
+            const { date, mealType, replaceMealId } = picker;
+            setPicker(null);
+            // Mode "replace" si l'utilisateur remplaçait un plat existant
+            // (l'API supprime le slot puis re-génère). Mode "fill" sinon
+            // pour ne pas écraser d'éventuels plats déjà présents sur le
+            // slot (cas multi-convives avec recettes différentes).
+            regenerateSlot(date, mealType, replaceMealId ? "replace" : "fill");
+          }}
+          generating={
+            regeneratingSlot === `${picker.date}|${picker.mealType}`
+          }
           slotLabel={`${SLOT_META[picker.mealType].label}, ${new Date(
             picker.date
           ).toLocaleDateString("fr-FR", {
@@ -1805,10 +1821,25 @@ function MealCard({
       )}
 
       <div className="flex items-stretch gap-3 p-3 lg:flex-col lg:gap-2 lg:p-2">
-        <MealThumbnail
-          imageUrl={meal.recipe.imageUrl}
-          name={meal.recipe.name}
-        />
+        {canReplace ? (
+          <button
+            type="button"
+            onClick={onReplace}
+            className="group/thumb shrink-0 lg:w-full rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-transform hover:scale-[1.02] active:scale-[0.98]"
+            title="Cliquer pour remplacer ce plat"
+            aria-label={`Remplacer ${meal.recipe.name}`}
+          >
+            <MealThumbnail
+              imageUrl={meal.recipe.imageUrl}
+              name={meal.recipe.name}
+            />
+          </button>
+        ) : (
+          <MealThumbnail
+            imageUrl={meal.recipe.imageUrl}
+            name={meal.recipe.name}
+          />
+        )}
         <div className="flex-1 min-w-0 flex flex-col justify-center min-h-16 sm:min-h-20 lg:min-h-0 lg:items-center lg:text-center">
           {canReplace ? (
             <button
@@ -1835,10 +1866,8 @@ function MealCard({
       </div>
 
       <div className="px-3 pb-3 pt-1 lg:px-2 lg:pb-2 border-t border-border/60">
-        {(() => {
-          const presentDiners = dinerKeys.filter((d) => presentSet.has(d));
-          const absentDiners = dinerKeys.filter((d) => !presentSet.has(d));
-          const renderPill = (d: Diner) => {
+        <div className="grid grid-cols-2 gap-1 sm:gap-1.5 lg:gap-1">
+          {dinerKeys.map((d) => {
             const isPresent = presentSet.has(d);
             const coef = dinerCoefficient(dinersConfig, d);
             return (
@@ -1848,7 +1877,7 @@ function MealCard({
                 disabled={readOnly}
                 onClick={() => onToggleDiner(d)}
                 className={cn(
-                  "group/diner relative inline-flex items-center gap-1.5 sm:gap-2 lg:gap-1 px-2 sm:px-3 lg:px-1.5 h-12 lg:h-10 rounded-full border text-sm font-medium transition-all",
+                  "group/diner relative inline-flex items-center gap-1.5 sm:gap-2 lg:gap-1 px-2 sm:px-3 lg:px-1.5 h-12 lg:h-10 rounded-full border text-sm font-medium transition-all min-w-0",
                   isPresent
                     ? "bg-card border-border-strong shadow-soft"
                     : "bg-muted/40 border-transparent text-muted-foreground/60 grayscale opacity-60 hover:opacity-100",
@@ -1866,30 +1895,11 @@ function MealCard({
                 >
                   {dinerInitials(dinersConfig, d)}
                 </span>
-                <span className="hidden sm:inline lg:hidden">
-                  {dinerLabel(dinersConfig, d)}
-                </span>
+                <span className="truncate">{dinerLabel(dinersConfig, d)}</span>
               </button>
             );
-          };
-          return (
-            <>
-              {presentDiners.length > 0 && (
-                <div className="flex items-center justify-start lg:justify-center gap-1 sm:gap-1.5 lg:gap-1 flex-wrap">
-                  {presentDiners.map(renderPill)}
-                </div>
-              )}
-              {absentDiners.length > 0 && presentDiners.length > 0 && (
-                <div className="my-1.5 border-t border-border/40" aria-hidden />
-              )}
-              {absentDiners.length > 0 && (
-                <div className="flex items-center justify-start lg:justify-center gap-1 sm:gap-1.5 lg:gap-1 flex-wrap">
-                  {absentDiners.map(renderPill)}
-                </div>
-              )}
-            </>
-          );
-        })()}
+          })}
+        </div>
       </div>
     </div>
   );
@@ -1902,6 +1912,8 @@ function RecipePicker({
   mode = "add",
   onSelect,
   onClose,
+  onGenerate,
+  generating = false,
   slotLabel,
   slotIcon: SlotIcon,
 }: {
@@ -1911,6 +1923,8 @@ function RecipePicker({
   mode?: "add" | "replace";
   onSelect: (id: number) => void;
   onClose: () => void;
+  onGenerate?: () => void;
+  generating?: boolean;
   slotLabel: string;
   slotIcon: typeof Sun;
 }) {
@@ -1962,6 +1976,22 @@ function RecipePicker({
               <X className="size-4" />
             </button>
           </div>
+          {onGenerate && (
+            <button
+              onClick={onGenerate}
+              disabled={generating || recipes.length === 0}
+              className="w-full inline-flex items-center justify-center gap-2 h-11 rounded-lg bg-gradient-to-r from-primary to-primary-hover text-primary-foreground text-sm font-semibold shadow-soft hover:shadow-lift transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {generating ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Sparkles className="size-4" />
+              )}
+              {mode === "replace"
+                ? "Remplacer via le générateur"
+                : "Générer une recette"}
+            </button>
+          )}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
             <input

@@ -9,6 +9,7 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "images.pexels.com" },
       { protocol: "https", hostname: "img.cuisineaz.com" },
       { protocol: "https", hostname: "**.cuisineactuelle.fr" },
+      { protocol: "https", hostname: "img.hellofresh.com" },
     ],
   },
 };
