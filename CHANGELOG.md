@@ -1,3 +1,9 @@
+## [1.15.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.14.0...v1.15.0) (2026-05-10)
+
+### Features
+
+* ajouter la gestion des paramètres de semaine dans la page d'accueil et améliorer la navigation dans le planificateur de repas ([a6e0297](https://github.com/m4dm4rtig4n/eat_scheduler/commit/a6e02970d5d83bd0a5b3671d50679274821ff505))
+
 ## [1.14.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.13.0...v1.14.0) (2026-05-10)
 
 ### Features
