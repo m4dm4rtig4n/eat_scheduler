@@ -66,7 +66,6 @@ function dinersWhoAccept(
 function recipeScore(
   recipe: RecipeWithDetails,
   diners: Diner[],
-  recentlyUsed: Set<number>,
   slotFavoriteIds?: Set<number>
 ): number {
   let prefScore = 0;
@@ -83,20 +82,11 @@ function recipeScore(
   // Poids de base de la recette (1-5). On retire la couverture car le diner pool est dynamique.
   const baseWeight = recipe.weight * 2;
 
-  // Pénalité si recently used
-  const recencyPenalty = recentlyUsed.has(recipe.id) ? 0.2 : 1;
-
   // Bonus si recette favorite pour ce slot (jour × créneau)
   const favoriteBonus =
     slotFavoriteIds && slotFavoriteIds.has(recipe.id) ? FAVORITE_BONUS : 1;
 
-  return (
-    baseWeight *
-    (prefScore + 1) *
-    ingredientBonus *
-    recencyPenalty *
-    favoriteBonus
-  );
+  return baseWeight * (prefScore + 1) * ingredientBonus * favoriteBonus;
 }
 
 function weightedRandomPick<T>(
@@ -301,18 +291,17 @@ export function generateWeekPlan(
       // sans plat assigné, avec une garde anti-boucle infinie
       let safety = 5;
       while (remainingDiners.length > 0 && safety-- > 0) {
+        // Pool primaire : on EXCLUT les recettes déjà utilisées dans la fenêtre.
+        // C'est plus mordant qu'une pénalité multiplicative — garantit la
+        // diversité tant que le pool restant le permet.
         const candidates = seasonalRecipes
+          .filter((r) => !usedThisWeek.has(r.id))
           .map((recipe) => {
             const accepted = dinersWhoAccept(recipe, remainingDiners);
             if (accepted.length === 0) return null;
             return {
               item: { recipe, accepted },
-              weight: recipeScore(
-                recipe,
-                accepted,
-                usedThisWeek,
-                slotFavoriteIds
-              ),
+              weight: recipeScore(recipe, accepted, slotFavoriteIds),
             };
           })
           .filter(
@@ -321,9 +310,9 @@ export function generateWeekPlan(
           );
 
         if (candidates.length === 0) {
-          // Aucune recette de saison n'accepte ces convives.
-          // Fallback 1 : relâcher la récence parmi les recettes saisonnières
-          // Fallback 2 : autoriser hors saison plutôt que laisser des convives non servis
+          // Aucune recette saisonnière non-utilisée n'accepte ces convives.
+          // Fallback 1 : autoriser les recettes saisonnières déjà utilisées
+          // Fallback 2 : autoriser hors-saison plutôt que laisser des convives non servis
           const seasonalFallback = seasonalRecipes
             .map((recipe) => {
               const accepted = dinersWhoAccept(recipe, remainingDiners);
@@ -337,9 +326,6 @@ export function generateWeekPlan(
 
           // Fallback ultime : on autorise hors-saison MAIS on respecte
           // toujours les allowedSlots (contrainte hard, pas un soft prefer).
-          // Note : on tolère ici les exclusions seulement si VRAIMENT plus rien
-          // d'autre n'est trouvable (cf. construction de fallbackOutOfSeason
-          // ci-dessous).
           let fallback = seasonalFallback;
           if (fallback.length === 0) {
             const fallbackOutOfSeason = ctx.recipes
@@ -374,10 +360,8 @@ export function generateWeekPlan(
           continue;
         }
 
-        // On garde les top 5 par score pour ajouter de la diversité
-        candidates.sort((a, b) => b.weight - a.weight);
-        const topK = candidates.slice(0, 5);
-        const picked = weightedRandomPick(topK, rng);
+        // Tirage pondéré sur tout le pool : pas de top-K, le poids fait le travail.
+        const picked = weightedRandomPick(candidates, rng);
         if (!picked) break;
 
         generatedMeals.push({

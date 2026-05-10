@@ -10,7 +10,7 @@ import { listAllFavorites } from "@/lib/db/slot-favorites";
 import { generateWeekPlan } from "@/lib/meal-generator";
 import { activeDiners } from "@/lib/diners";
 import { listDiners } from "@/lib/db/diners";
-import { addDays, formatDateISO } from "@/lib/utils";
+import { addDays, formatDateISO, startOfWeek } from "@/lib/utils";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -36,12 +36,13 @@ export async function POST(request: NextRequest) {
     await deleteMealsBetween(startDate, endDate, mealTypes);
   }
 
-  // Pour la pénalité de récence, on a besoin de connaître les repas
-  // de la semaine entière, pas seulement de la fenêtre régénérée.
-  // Sinon une régénération slot-par-slot retomberait souvent sur les
-  // mêmes recettes que le voisin proche.
-  const recencyStart = formatDateISO(addDays(new Date(startDate), -3));
-  const recencyEnd = formatDateISO(addDays(new Date(endDate), 3));
+  // Fenêtre de récence : on étend à la semaine ISO complète qui contient
+  // [startDate, endDate]. Pour une régénération slot-par-slot, ça garantit
+  // que le générateur "voit" tous les autres repas de la semaine, pas
+  // seulement les voisins ±3 jours, et évite donc de retomber sur un plat
+  // déjà cuisiné un autre jour.
+  const recencyStart = formatDateISO(startOfWeek(new Date(startDate)));
+  const recencyEnd = formatDateISO(addDays(startOfWeek(new Date(endDate)), 6));
 
   const [existingMeals, slotFavorites, allDiners] = await Promise.all([
     listMealsBetween(recencyStart, recencyEnd),

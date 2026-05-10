@@ -77,9 +77,24 @@ export function useLongPress(
   // ─────────────────────────────────────────────────────────────────────
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
-      // TODO : implémente moi
+      // 1. Mémorise la position de départ : sert à mesurer la distance
+      //    parcourue dans onPointerMove pour annuler si l'utilisateur drag.
+      startPosRef.current = { x: e.clientX, y: e.clientY };
+      // 2. Reset du marqueur : un cycle précédent ne doit pas bloquer ce click.
+      triggeredRef.current = false;
+      // 3. Si un timer traîne (cas pathologique : pointerdown sans up), purge.
+      cancelTimer();
+      // 4. Démarre le timer : si le doigt reste immobile `delay` ms, on pin.
+      timerRef.current = window.setTimeout(() => {
+        triggeredRef.current = true;
+        if (vibrateMs > 0 && typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+          navigator.vibrate(vibrateMs);
+        }
+        onLongPress();
+        timerRef.current = null;
+      }, delay);
     },
-    [delay, vibrateMs, onLongPress]
+    [delay, vibrateMs, onLongPress, cancelTimer]
   );
 
   // Annule le timer si le pointeur bouge au-delà de la tolérance.

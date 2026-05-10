@@ -32,6 +32,9 @@ import {
   MoreVertical,
   ArrowRightLeft,
 } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-is-mobile";
+import { useIsClient } from "@/hooks/use-is-client";
+import { useLongPress } from "@/hooks/use-long-press";
 import { RecipeFilterChips } from "@/components/recipe-filter-chips";
 import { Button } from "@/components/ui/button";
 import {
@@ -108,6 +111,17 @@ export function WeekPlanner({
 }) {
   const dinersConfig = useDiners();
   const dinerKeysActive = activeDinerKeys(dinersConfig);
+  // Mobile (< lg : 1024px) : drag-and-drop désactivé. Sur petit écran, le
+  // drag est peu ergonomique (cibles de drop trop petites, scroll vertical
+  // qui entre en conflit). Le long-press déclenche le pin à la place, et
+  // l'échange se fait via le menu kebab "Échanger avec…".
+  const isMobile = useIsMobile();
+  // SSR-gate : @dnd-kit/core utilise un compteur global (useUniqueId) qui
+  // génère des `aria-describedby` non-déterministes entre serveur et client.
+  // Tant que isClient = false, on rend l'arbre SANS <DndContext> : les hooks
+  // useDraggable/useDroppable retombent sur defaultInternalContext (bénin),
+  // l'attribut DndDescribedBy-N n'est jamais ajouté au DOM. Plus de mismatch.
+  const isClient = useIsClient();
   const [weekStart, setWeekStart] = useState(() => new Date(initialWeekStart));
   const [meals, setMeals] = useState(initialMeals);
   const [picker, setPicker] = useState<{
@@ -691,12 +705,20 @@ export function WeekPlanner({
   const regenerateSlot = async (date: string, mealType: MealSlot) => {
     const slotKey = `${date}|${mealType}`;
     setRegeneratingSlot(slotKey);
-    // On exclut explicitement les recettes actuelles du slot pour forcer
-    // le tirage à proposer autre chose. Sinon le générateur peut retomber
-    // sur la même recette à cause du tirage pondéré sur top-K.
-    const excludeRecipeIds = meals
-      .filter((m) => m.date === date && m.mealType === mealType)
-      .map((m) => m.recipeId);
+    // On exclut TOUTES les recettes déjà planifiées sur la semaine visible.
+    // Intention utilisateur d'un click "régénérer" = "donne-moi quelque chose
+    // que je n'ai pas déjà cette semaine". Si le pool restant est vide, le
+    // générateur tombe sur ses fallbacks (saisonnier sans exclusion, puis
+    // hors-saison) et propose quand même un plat.
+    const weekStartISO = formatDateISO(startOfWeek(new Date(date)));
+    const weekEndISO = formatDateISO(addDays(new Date(weekStartISO), 6));
+    const excludeRecipeIds = Array.from(
+      new Set(
+        meals
+          .filter((m) => m.date >= weekStartISO && m.date <= weekEndISO)
+          .map((m) => m.recipeId)
+      )
+    );
     try {
       const res = await fetch("/api/meals/generate", {
         method: "POST",
@@ -774,18 +796,7 @@ export function WeekPlanner({
   const totalMeals = meals.length;
   const filledSlots = new Set(meals.map((m) => `${m.date}-${m.mealType}`)).size;
 
-  return (
-    <DndContext
-      sensors={sensors}
-      onDragStart={handleDragStart}
-      onDragOver={handleDragOver}
-      onDragEnd={handleDragEnd}
-      onDragCancel={() => {
-        setDraggingMealId(null);
-        setDragOverSlotId(null);
-        setDragOverMealId(null);
-      }}
-    >
+  const content = (
     <div className="px-4 py-4">
       <div className="flex items-center justify-between gap-2 mb-4 bg-card-warm rounded-[var(--radius-lg)] px-2 py-3 border border-border shadow-soft">
         <Button
@@ -1110,6 +1121,7 @@ export function WeekPlanner({
                                 pinned={
                                   isMealPinned(meal) || meal.pinned
                                 }
+                                dragDisabled={isMobile}
                                 swapHighlight={swapSourceMealId === meal.id}
                                 willBeReplaced={replacedMealId === meal.id}
                                 onReplace={() =>
@@ -1357,15 +1369,37 @@ export function WeekPlanner({
         />
       )}
     </div>
+  );
 
-    {/* Aperçu qui suit le pointeur pendant le drag (DragOverlay = portal) */}
-    <DragOverlay dropAnimation={null}>
-      {draggedMeal ? (
-        <div className="rotate-2 opacity-90 shadow-lift">
-          <MealCardPreview meal={draggedMeal} pinned={draggedMeal.pinned} />
-        </div>
-      ) : null}
-    </DragOverlay>
+  // Pendant le SSR et le premier rendu client, on retourne le contenu sans
+  // <DndContext> pour éviter le hydration mismatch lié aux IDs aria-describedby
+  // générés par @dnd-kit (compteur global non-déterministe). Côté client après
+  // mount, on active le DndContext + DragOverlay pour le drag-and-drop complet.
+  if (!isClient) {
+    return content;
+  }
+
+  return (
+    <DndContext
+      sensors={sensors}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragEnd={handleDragEnd}
+      onDragCancel={() => {
+        setDraggingMealId(null);
+        setDragOverSlotId(null);
+        setDragOverMealId(null);
+      }}
+    >
+      {content}
+      {/* Aperçu qui suit le pointeur pendant le drag (DragOverlay = portal) */}
+      <DragOverlay dropAnimation={null}>
+        {draggedMeal ? (
+          <div className="rotate-2 opacity-90 shadow-lift">
+            <MealCardPreview meal={draggedMeal} pinned={draggedMeal.pinned} />
+          </div>
+        ) : null}
+      </DragOverlay>
     </DndContext>
   );
 }
@@ -1496,6 +1530,7 @@ function MealCard({
   meal,
   readOnly = false,
   pinned = false,
+  dragDisabled = false,
   swapHighlight = false,
   willBeReplaced = false,
   onReplace,
@@ -1507,6 +1542,8 @@ function MealCard({
   meal: PlannedMealWithRecipe;
   readOnly?: boolean;
   pinned?: boolean;
+  /** Désactive le drag-and-drop (mobile). Le long-press reste actif. */
+  dragDisabled?: boolean;
   /** Met en évidence la carte source pendant un swap en cours. */
   swapHighlight?: boolean;
   /** Affiche un overlay « sera remplacée » pendant un drag survolant ce slot. */
@@ -1535,21 +1572,60 @@ function MealCard({
     isDragging,
   } = useDraggable({
     id: `meal:${meal.id}`,
-    disabled: readOnly,
+    disabled: readOnly || dragDisabled,
   });
   // Et la carte est aussi droppable : permet de cibler précisément CETTE
   // carte comme destination du swap (au lieu de tomber sur la 1re du slot).
   // Désactivé sur soi-même via `disabled` pour éviter un drop sur sa propre
   // carte source (qui n'aurait aucun sens et perturberait la collision).
+  // Désactivé aussi sur mobile : pas de drag, donc pas de cible de drop.
   const { setNodeRef: setDroppableRef } = useDroppable({
     id: `meal-target:${meal.id}`,
-    disabled: readOnly || isDragging,
+    disabled: readOnly || isDragging || dragDisabled,
   });
   // Merge des deux refs sur le même <div>.
   const setNodeRef = (node: HTMLElement | null) => {
     setDraggableRef(node);
     setDroppableRef(node);
   };
+  // Long-press (mobile + desktop) : déclenche le pin après 500ms d'appui
+  // immobile. Si le pointeur bouge >10px avant, on annule (le drag @dnd-kit
+  // prend la main à 8px côté tactile). Pas de listeners si readOnly ou pas
+  // de toggle disponible.
+  const longPressEnabled = !readOnly && !!onTogglePin;
+  const longPress = useLongPress(
+    () => onTogglePin?.(),
+    { delay: 500, tolerance: 10, vibrateMs: 50 }
+  );
+  // Compose les pointer handlers de @dnd-kit (listeners) avec ceux du
+  // long-press : on appelle d'abord celui de dnd-kit (sinon le drag casse),
+  // puis le nôtre. Pour les autres événements (move/up/cancel), idem.
+  const composedListeners = longPressEnabled
+    ? {
+        ...listeners,
+        onPointerDown: (e: React.PointerEvent) => {
+          listeners?.onPointerDown?.(e);
+          longPress.onPointerDown(e);
+        },
+        onPointerMove: (e: React.PointerEvent) => {
+          listeners?.onPointerMove?.(e);
+          longPress.onPointerMove(e);
+        },
+        onPointerUp: (e: React.PointerEvent) => {
+          listeners?.onPointerUp?.(e);
+          longPress.onPointerUp(e);
+        },
+        onPointerCancel: (e: React.PointerEvent) => {
+          listeners?.onPointerCancel?.(e);
+          longPress.onPointerCancel(e);
+        },
+        onPointerLeave: (e: React.PointerEvent) => {
+          listeners?.onPointerLeave?.(e);
+          longPress.onPointerLeave(e);
+        },
+      }
+    : listeners;
+
   const [menuOpen, setMenuOpen] = useState(false);
   // Position du menu en coordonnées viewport (position: fixed) — nécessaire
   // car la MealCard parente a overflow-hidden qui rognerait un menu absolute.
@@ -1596,9 +1672,13 @@ function MealCard({
     <div
       ref={setNodeRef}
       {...attributes}
-      {...listeners}
+      {...composedListeners}
+      onClickCapture={longPressEnabled ? longPress.onClickCapture : undefined}
       className={cn(
-        "group relative bg-background border rounded-[var(--radius-lg)] overflow-hidden transition-colors touch-none",
+        "group relative bg-background border rounded-[var(--radius-lg)] overflow-hidden transition-colors",
+        // touch-none seulement si le drag est actif : sinon ça empêche le
+        // scroll vertical de la liste sur mobile.
+        !dragDisabled && "touch-none",
         pinned
           ? "border-primary/40 bg-primary-soft/20"
           : "border-border",
