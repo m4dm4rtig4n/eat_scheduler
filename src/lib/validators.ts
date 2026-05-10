@@ -65,7 +65,22 @@ export const plannedMealSchema = z.object({
 
 export type PlannedMealInput = z.infer<typeof plannedMealSchema>;
 
-export const plannedMealUpdateSchema = plannedMealSchema.partial();
+// Zod v4 : `.partial()` propage les `.default()` des champs absents, ce qui
+// transformerait un PATCH `{pinned: true}` en `{pinned: true, diners: [], ...}`
+// et écraserait les diners du repas. On redéclare donc l'update à la main,
+// uniquement avec `.optional()` et sans aucun `.default()`.
+export const plannedMealUpdateSchema = z.object({
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Format YYYY-MM-DD attendu")
+    .optional(),
+  mealType: z.enum(["lunch", "dinner"]).optional(),
+  recipeId: z.coerce.number().int().positive().optional(),
+  servingsMultiplier: z.coerce.number().nonnegative().optional(),
+  diners: z.array(dinerSchema).optional(),
+  notes: z.string().max(500).nullable().optional(),
+  pinned: z.boolean().optional(),
+});
 
 export const slotFavoriteEntrySchema = z.object({
   recipeId: z.coerce.number().int().positive(),
