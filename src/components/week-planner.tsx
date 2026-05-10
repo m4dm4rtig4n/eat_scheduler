@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import {
   DndContext,
   PointerSensor,
@@ -122,7 +123,22 @@ export function WeekPlanner({
   // useDraggable/useDroppable retombent sur defaultInternalContext (bénin),
   // l'attribut DndDescribedBy-N n'est jamais ajouté au DOM. Plus de mismatch.
   const isClient = useIsClient();
+  const router = useRouter();
   const [weekStart, setWeekStart] = useState(() => new Date(initialWeekStart));
+  // Re-sync l'état local si l'URL (?week=) change : permet au bouton retour
+  // du navigateur ou à un setQueryState externe de remettre le planner sur
+  // la bonne semaine sans démontage du composant.
+  useEffect(() => {
+    setWeekStart((prev) => {
+      const next = new Date(initialWeekStart);
+      return formatDateISO(prev) === formatDateISO(next) ? prev : next;
+    });
+  }, [initialWeekStart]);
+  const navigateToWeek = (next: Date) => {
+    const iso = formatDateISO(next);
+    setWeekStart(next);
+    router.replace(`/?week=${iso}`, { scroll: false });
+  };
   const [meals, setMeals] = useState(initialMeals);
   const [picker, setPicker] = useState<{
     date: string;
@@ -802,7 +818,7 @@ export function WeekPlanner({
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => setWeekStart((d) => addDays(d, -7))}
+          onClick={() => navigateToWeek(addDays(weekStart, -7))}
           aria-label="Semaine précédente"
         >
           <ChevronLeft className="size-5" />
@@ -818,7 +834,7 @@ export function WeekPlanner({
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => setWeekStart((d) => addDays(d, 7))}
+          onClick={() => navigateToWeek(addDays(weekStart, 7))}
           aria-label="Semaine suivante"
         >
           <ChevronRight className="size-5" />
@@ -828,7 +844,7 @@ export function WeekPlanner({
       <div className="grid grid-cols-2 gap-2 sm:gap-3 mb-4">
         <button
           type="button"
-          onClick={() => setWeekStart(currentWeekStart)}
+          onClick={() => navigateToWeek(currentWeekStart)}
           aria-pressed={isCurrentWeek}
           className={cn(
             "rounded-[var(--radius-lg)] px-3 py-2.5 text-center transition-all border shadow-soft",
@@ -851,7 +867,7 @@ export function WeekPlanner({
         </button>
         <button
           type="button"
-          onClick={() => setWeekStart(nextWeekStart)}
+          onClick={() => navigateToWeek(nextWeekStart)}
           aria-pressed={isNextWeek}
           className={cn(
             "rounded-[var(--radius-lg)] px-3 py-2.5 text-center transition-all border shadow-soft",

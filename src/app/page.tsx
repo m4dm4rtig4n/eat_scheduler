@@ -8,8 +8,29 @@ import { WeekPlanner } from "@/components/week-planner";
 
 export const dynamic = "force-dynamic";
 
-export default async function HomePage() {
-  const weekStart = startOfWeek(new Date());
+// Parse un paramètre ?week=YYYY-MM-DD. Retourne le lundi de la semaine
+// correspondante si valide, sinon la semaine en cours (fallback silencieux).
+function resolveWeekStart(raw: string | string[] | undefined): Date {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [y, m, d] = value.split("-").map(Number);
+    const candidate = new Date(y, m - 1, d);
+    const valid =
+      candidate.getFullYear() === y &&
+      candidate.getMonth() === m - 1 &&
+      candidate.getDate() === d;
+    if (valid) return startOfWeek(candidate);
+  }
+  return startOfWeek(new Date());
+}
+
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  const params = await searchParams;
+  const weekStart = resolveWeekStart(params.week);
   const start = formatDateISO(weekStart);
   const end = formatDateISO(addDays(weekStart, 6));
 
