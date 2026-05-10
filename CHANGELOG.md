@@ -1,3 +1,9 @@
+## [1.14.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.13.0...v1.14.0) (2026-05-10)
+
+### Features
+
+* redéfinir le schéma de mise à jour des repas planifiés pour éviter l'écrasement des données par défaut ([ef57133](https://github.com/m4dm4rtig4n/eat_scheduler/commit/ef571330ae744752e35532da959e83c1d72c557d))
+
 ## [1.13.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.12.0...v1.13.0) (2026-05-10)
 
 ### Features
