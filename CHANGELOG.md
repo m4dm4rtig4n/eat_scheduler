@@ -1,3 +1,9 @@
+## [1.13.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.12.0...v1.13.0) (2026-05-10)
+
+### Features
+
+* ajouter des hooks pour la détection mobile et le rendu côté client, améliorer la logique de génération de repas ([d5232c0](https://github.com/m4dm4rtig4n/eat_scheduler/commit/d5232c00e0f59cd402489e14e836b8b862e0353c))
+
 ## [1.12.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.11.0...v1.12.0) (2026-05-07)
 
 ### Features
