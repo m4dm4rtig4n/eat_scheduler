@@ -1632,7 +1632,7 @@ function SlotPresenceToggles({
             aria-label={`${dinerLabel(dinersConfig, d)} ${isPresent ? "présent" : "absent"} (cliquer pour basculer)`}
             title={`${dinerLabel(dinersConfig, d)} ${isPresent ? "(présent)" : "(absent · exclu de la génération)"}`}
             className={cn(
-              "inline-flex items-center justify-center size-6 rounded-full text-[10px] font-bold text-white shrink-0 transition-all",
+              "inline-flex items-center justify-center size-8 rounded-full text-xs font-bold text-white shrink-0 transition-all",
               dinerColorBg(dinersConfig, d),
               !isPresent && "grayscale opacity-40",
               !readOnly && "hover:scale-110 active:scale-95 cursor-pointer",
