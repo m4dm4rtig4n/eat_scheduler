@@ -42,6 +42,17 @@ export type GenerationContext = {
   // d'un slot, où l'utilisateur veut explicitement éviter ce qu'il vient de
   // remplacer). On filtre AVANT le scoring, donc poids effectif = 0.
   excludeRecipeIds?: number[];
+  // Overrides ponctuels de présence convive × (date, mealType) — cf. table
+  // meal_slot_overrides. Sémantique : `present=false` force l'absence même
+  // si le convive est disponible par défaut, `present=true` force la présence
+  // même si le convive est marqué absent récurrent (unavailableSlots).
+  // L'override PRIME sur le défaut récurrent.
+  slotOverrides?: Array<{
+    date: string;
+    mealType: string;
+    dinerKey: Diner;
+    present: boolean;
+  }>;
 };
 
 function getPreference(
@@ -146,15 +157,36 @@ export function generateWeekPlan(
   const excluded = new Set(ctx.excludeRecipeIds ?? []);
   const isExcluded = (id: number) => excluded.has(id);
 
-  // Filtre les convives à servir pour un slot donné, en respectant les
-  // indisponibilités récurrentes configurées en réglages.
+  // Index "{date}|{mealType}" → Map<dinerKey, present> des overrides explicites
+  // pour ce slot précis (depuis l'UI WeekPlanner). Un override prime sur le
+  // comportement par défaut (réglages récurrents).
+  const slotOverridesByKey = new Map<string, Map<Diner, boolean>>();
+  for (const o of ctx.slotOverrides ?? []) {
+    const k = `${o.date}|${o.mealType}`;
+    if (!slotOverridesByKey.has(k)) slotOverridesByKey.set(k, new Map());
+    slotOverridesByKey.get(k)!.set(o.dinerKey, o.present);
+  }
+
+  // Filtre les convives à servir pour un slot donné. Un convive est inclus si :
+  //   - override explicite present=true, OU
+  //   - pas d'override ET disponible récurrent (réglages)
+  // Et exclu si :
+  //   - override explicite present=false, OU
+  //   - pas d'override ET indisponible récurrent
   const dinersForSlot = (
+    date: string,
     dayOfWeek: number,
     mealType: MealType
-  ): Diner[] =>
-    allActive
-      .filter((d) => isDinerAvailable(d, dayOfWeek, mealType))
+  ): Diner[] => {
+    const overrides = slotOverridesByKey.get(`${date}|${mealType}`);
+    return allActive
+      .filter((d) => {
+        const override = overrides?.get(d.key);
+        if (override !== undefined) return override;
+        return isDinerAvailable(d, dayOfWeek, mealType);
+      })
       .map((d) => d.key);
+  };
 
   const usedThisWeek = new Set<number>();
   const slots: GeneratedSlot[] = [];
@@ -202,7 +234,7 @@ export function generateWeekPlan(
       // Si tous les convives du slot sont déjà servis par un/des meals
       // existants (pinned), pas besoin de générer. Sinon on traite le slot
       // pour compléter avec les convives manquants.
-      const slotDinersForCheck = dinersForSlot(dayOfWeek, mealType);
+      const slotDinersForCheck = dinersForSlot(date, dayOfWeek, mealType);
       const covered = coveredDinersByKey.get(slotKey);
       if (
         slotDinersForCheck.length > 0 &&
@@ -232,7 +264,7 @@ export function generateWeekPlan(
     // Convives présents par défaut sur ce créneau (jour × midi/soir).
     // Si tout le monde est marqué absent en réglages, on skip purement et
     // simplement ce slot — comportement choisi : pas de repas créé du tout.
-    const allSlotDiners = dinersForSlot(dayOfWeek, mealType);
+    const allSlotDiners = dinersForSlot(date, dayOfWeek, mealType);
     if (allSlotDiners.length === 0) continue;
 
     // Soustrait les convives déjà servis par les meals existants (pinned).

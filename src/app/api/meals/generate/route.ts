@@ -7,6 +7,7 @@ import {
   deleteMealsBetween,
 } from "@/lib/db/meals";
 import { listAllFavorites } from "@/lib/db/slot-favorites";
+import { listOverridesBetween } from "@/lib/db/meal-slot-overrides";
 import { generateWeekPlan } from "@/lib/meal-generator";
 import { activeDiners } from "@/lib/diners";
 import { listDiners } from "@/lib/db/diners";
@@ -44,11 +45,17 @@ export async function POST(request: NextRequest) {
   const recencyStart = formatDateISO(startOfWeek(new Date(startDate)));
   const recencyEnd = formatDateISO(addDays(startOfWeek(new Date(endDate)), 6));
 
-  const [existingMeals, slotFavorites, allDiners] = await Promise.all([
-    listMealsBetween(recencyStart, recencyEnd),
-    listAllFavorites(),
-    listDiners(),
-  ]);
+  const [existingMeals, slotFavorites, allDiners, slotOverrides] =
+    await Promise.all([
+      listMealsBetween(recencyStart, recencyEnd),
+      listAllFavorites(),
+      listDiners(),
+      // On charge les overrides uniquement sur la fenêtre de génération réelle
+      // [startDate, endDate], pas sur la fenêtre étendue de récence : un convive
+      // marqué absent un dimanche précédent ne doit pas influencer la génération
+      // du lundi.
+      listOverridesBetween(startDate, endDate),
+    ]);
   const dinerConfigs = activeDiners(allDiners);
   if (dinerConfigs.length === 0) {
     return NextResponse.json(
@@ -73,6 +80,12 @@ export async function POST(request: NextRequest) {
     seasonOverride,
     slotFavorites,
     excludeRecipeIds,
+    slotOverrides: slotOverrides.map((o) => ({
+      date: o.date,
+      mealType: o.mealType,
+      dinerKey: o.dinerKey,
+      present: o.present,
+    })),
   });
 
   const allMeals = slots.flatMap((s) => s.meals);

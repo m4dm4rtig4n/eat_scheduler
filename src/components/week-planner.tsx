@@ -54,11 +54,13 @@ import {
 } from "@/lib/utils";
 import {
   activeDinerKeys,
+  activeDiners,
   availableDinerKeysForSlot,
   dinerInitials,
   dinerLabel,
   dinerColorBg,
   dinerCoefficient,
+  isDinerAvailable,
   totalShares,
   type Diner,
   type DinerConfig,
@@ -68,6 +70,7 @@ import { SEASON_EMOJI, SEASON_LABELS } from "@/lib/seasons";
 import type { PlannedMealWithRecipe } from "@/lib/db/meals";
 import type { RecipeWithDetails } from "@/lib/db/recipes";
 import type { SlotFavorite } from "@/lib/db/slot-favorites";
+import type { MealSlotOverride } from "@/lib/db/meal-slot-overrides";
 
 type MealSlot = "lunch" | "dinner";
 
@@ -148,6 +151,11 @@ export function WeekPlanner({
   const [generating, setGenerating] = useState(false);
   const [generateOpen, setGenerateOpen] = useState(false);
   const [slotFavorites, setSlotFavorites] = useState<SlotFavorite[]>([]);
+  // Overrides ponctuels de présence convive × (date, mealType). Une entrée
+  // exprime un override explicite (present=true OU present=false) par rapport
+  // aux unavailableSlots récurrents des réglages. Stockage serveur via
+  // /api/meal-slot-overrides.
+  const [slotOverrides, setSlotOverrides] = useState<MealSlotOverride[]>([]);
   // ID du repas source d'un swap en cours. null = pas de swap actif.
   const [swapSourceMealId, setSwapSourceMealId] = useState<number | null>(null);
   // ID du meal en cours de drag (null sinon). Utilisé pour le DragOverlay.
@@ -214,7 +222,135 @@ export function WeekPlanner({
       .then((r) => r.json())
       .then(setMeals)
       .catch(() => {});
+    fetch(`/api/meal-slot-overrides?start=${start}&end=${end}`)
+      .then((r) => r.json())
+      .then(setSlotOverrides)
+      .catch(() => {});
   }, [weekStart]);
+
+  // Index "{date}|{mealType}" → Map<dinerKey, present> des overrides explicites
+  // pour ce slot. Permet au composant SlotPresenceToggles de calculer l'état
+  // affiché : override explicite prime sur le défaut (réglages récurrents).
+  const overridesByKey = new Map<string, Map<Diner, boolean>>();
+  for (const o of slotOverrides) {
+    const k = `${o.date}|${o.mealType}`;
+    if (!overridesByKey.has(k)) overridesByKey.set(k, new Map());
+    overridesByKey.get(k)!.set(o.dinerKey, o.present);
+  }
+
+  const toggleSlotPresence = async (
+    date: string,
+    mealType: MealSlot,
+    diner: Diner
+  ) => {
+    const k = `${date}|${mealType}`;
+    const dayOfWeek = getDayOfWeekFromIso(date);
+    const dinerConfig = dinersConfig.find((d) => d.key === diner);
+    if (!dinerConfig) return;
+    // Présence par défaut basée sur les réglages récurrents
+    const defaultPresent = isDinerAvailable(dinerConfig, dayOfWeek, mealType);
+    // État actuel = override s'il existe, sinon défaut
+    const currentOverride = overridesByKey.get(k)?.get(diner);
+    const currentPresent =
+      currentOverride !== undefined ? currentOverride : defaultPresent;
+    // L'état futur = inverse de l'actuel
+    const nextPresent = !currentPresent;
+
+    // Construit la nouvelle liste d'overrides pour ce slot. Si le nouvel
+    // état correspond au défaut, on ne stocke pas d'override (économie).
+    const currentMap = new Map(overridesByKey.get(k) ?? []);
+    if (nextPresent === defaultPresent) {
+      currentMap.delete(diner);
+    } else {
+      currentMap.set(diner, nextPresent);
+    }
+    const nextOverridesForSlot = Array.from(currentMap.entries()).map(
+      ([dinerKey, present]) => ({ dinerKey, present })
+    );
+
+    // Propagation aux meals existants du slot :
+    //  - passage à absent : retire le convive des meals non-pinnés où il figure,
+    //    recalcule leur servingsMultiplier.
+    //  - passage à présent : NE propage PAS (à quel plat l'attacher si le slot
+    //    contient plusieurs plats ?). L'utilisateur cliquera sur la MealCard.
+    type MealPatch = {
+      id: number;
+      diners: Diner[];
+      servingsMultiplier: number;
+    };
+    const mealPatches: MealPatch[] = [];
+    if (!nextPresent) {
+      for (const m of meals) {
+        if (m.date !== date || m.mealType !== mealType) continue;
+        if (m.pinned) continue;
+        if (!m.diners.includes(diner)) continue;
+        const reduced = m.diners.filter((d) => d !== diner);
+        const ordered = dinerKeysActive.filter((d) => reduced.includes(d));
+        const shares = totalShares(dinersConfig, ordered);
+        mealPatches.push({
+          id: m.id,
+          diners: ordered,
+          servingsMultiplier:
+            m.recipe.servings > 0 ? shares / m.recipe.servings : 1,
+        });
+      }
+    }
+
+    // Optimistic update : on met à jour les deux states locaux d'abord, l'UI
+    // reste réactive même si les requêtes mettent du temps à répondre.
+    setSlotOverrides((curr) => [
+      ...curr.filter((a) => !(a.date === date && a.mealType === mealType)),
+      ...nextOverridesForSlot.map((o) => ({
+        date,
+        mealType,
+        dinerKey: o.dinerKey,
+        present: o.present,
+      })),
+    ]);
+    if (mealPatches.length > 0) {
+      const patchById = new Map(mealPatches.map((p) => [p.id, p]));
+      setMeals((curr) =>
+        curr.map((m) => {
+          const p = patchById.get(m.id);
+          if (!p) return m;
+          return { ...m, diners: p.diners, servingsMultiplier: p.servingsMultiplier };
+        })
+      );
+    }
+
+    try {
+      await Promise.all([
+        fetch("/api/meal-slot-overrides", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            date,
+            mealType,
+            overrides: nextOverridesForSlot,
+          }),
+        }),
+        ...mealPatches.map((p) =>
+          fetch(`/api/meals/${p.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              diners: p.diners,
+              servingsMultiplier: p.servingsMultiplier,
+            }),
+          })
+        ),
+      ]);
+    } catch {
+      // En cas d'erreur réseau, on resynchronise depuis le serveur (les deux états)
+      await refresh();
+      const start = formatDateISO(weekStart);
+      const end = formatDateISO(addDays(weekStart, 6));
+      fetch(`/api/meal-slot-overrides?start=${start}&end=${end}`)
+        .then((r) => r.json())
+        .then(setSlotOverrides)
+        .catch(() => {});
+    }
+  };
 
 
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
@@ -1122,8 +1258,19 @@ export function WeekPlanner({
                         >
                           {meta.label}
                         </span>
+                        <SlotPresenceToggles
+                          date={dateISO}
+                          mealType={slot}
+                          overridesMap={
+                            overridesByKey.get(`${dateISO}|${slot}`) ?? null
+                          }
+                          readOnly={isPast}
+                          onToggle={(d) =>
+                            toggleSlotPresence(dateISO, slot, d)
+                          }
+                        />
                         {slotMeals.length > 0 && (
-                          <span className="ml-auto text-[10px] font-semibold text-muted-foreground tabular-nums">
+                          <span className="ml-1 text-[10px] font-semibold text-muted-foreground tabular-nums">
                             {slotMeals.length} plat
                             {slotMeals.length > 1 ? "s" : ""}
                           </span>
@@ -1433,6 +1580,70 @@ export function WeekPlanner({
         ) : null}
       </DragOverlay>
     </DndContext>
+  );
+}
+
+/**
+ * Rangée d'initiales toggleables dans le header d'un slot (date × midi/soir).
+ * Affiche TOUS les convives actifs (non archivés). État présent/absent calculé
+ * comme suit :
+ *   - override explicite (overridesMap) prime sur le défaut
+ *   - sinon, défaut = isDinerAvailable selon les réglages récurrents
+ *
+ * Permet à la fois de retirer un convive présent par défaut ET de réintégrer
+ * un convive absent récurrent juste pour ce slot précis. La (ré)génération
+ * de menus tient compte du résultat final.
+ *
+ * Présent = pastille colorée pleine ; absent = grisé.
+ */
+function SlotPresenceToggles({
+  date,
+  mealType,
+  overridesMap,
+  readOnly,
+  onToggle,
+}: {
+  date: string;
+  mealType: MealSlot;
+  overridesMap: Map<Diner, boolean> | null;
+  readOnly: boolean;
+  onToggle: (diner: Diner) => void;
+}) {
+  const dinersConfig = useDiners();
+  const dayOfWeek = getDayOfWeekFromIso(date);
+  // Tous les convives actifs (non archivés) dans l'ordre canonique. On les
+  // affiche tous ; le grisé indique l'absence (récurrente ou ponctuelle).
+  const candidates = activeDiners(dinersConfig);
+  if (candidates.length === 0) return null;
+  return (
+    <div className="flex-1 flex items-center justify-center gap-1">
+      {candidates.map((dCfg) => {
+        const d = dCfg.key;
+        const defaultPresent = isDinerAvailable(dCfg, dayOfWeek, mealType);
+        const override = overridesMap?.get(d);
+        const isPresent = override !== undefined ? override : defaultPresent;
+        return (
+          <button
+            key={d}
+            type="button"
+            disabled={readOnly}
+            onClick={() => onToggle(d)}
+            aria-pressed={isPresent}
+            aria-label={`${dinerLabel(dinersConfig, d)} ${isPresent ? "présent" : "absent"} (cliquer pour basculer)`}
+            title={`${dinerLabel(dinersConfig, d)} ${isPresent ? "(présent)" : "(absent · exclu de la génération)"}`}
+            className={cn(
+              "inline-flex items-center justify-center size-6 rounded-full text-[10px] font-bold text-white shrink-0 transition-all",
+              dinerColorBg(dinersConfig, d),
+              !isPresent && "grayscale opacity-40",
+              !readOnly && "hover:scale-110 active:scale-95 cursor-pointer",
+              readOnly && "cursor-default"
+            )}
+          >
+            {dinerInitials(dinersConfig, d)}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

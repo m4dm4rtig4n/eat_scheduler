@@ -113,6 +113,22 @@ export const generateMealsSchema = z.object({
 
 export type GenerateMealsInput = z.infer<typeof generateMealsSchema>;
 
+export const mealSlotOverrideEntrySchema = z.object({
+  dinerKey: dinerSchema,
+  present: z.boolean(),
+});
+
+export const mealSlotOverridesSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Format YYYY-MM-DD attendu"),
+  mealType: z.enum(["lunch", "dinner"]),
+  // Liste des overrides explicites pour ce slot. Une entrée par convive
+  // override (absent récurrent forcé présent ou présent récurrent forcé
+  // absent). Liste vide = aucun override, retour au comportement par défaut.
+  overrides: z.array(mealSlotOverrideEntrySchema),
+});
+
+export type MealSlotOverridesInput = z.infer<typeof mealSlotOverridesSchema>;
+
 export const colorKeySchema = z.enum(COLOR_KEYS);
 
 export const dinerCreateSchema = z.object({

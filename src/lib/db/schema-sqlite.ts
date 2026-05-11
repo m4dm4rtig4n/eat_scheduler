@@ -131,6 +131,27 @@ export const dinerUnavailableSlots = sqliteTable(
   })
 );
 
+// Overrides ponctuels de présence convive × (date, mealType). Une ligne
+// présente exprime un override explicite par rapport au comportement par
+// défaut (réglages récurrents). `present=false` = absent ponctuellement,
+// `present=true` = présent ponctuellement (utile pour un convive absent
+// récurrent qu'on veut réintégrer juste pour ce créneau). L'absence de
+// ligne = état par défaut sans override.
+export const mealSlotOverrides = sqliteTable(
+  "meal_slot_overrides",
+  {
+    date: text("date").notNull(),
+    mealType: text("meal_type").notNull(),
+    dinerKey: text("diner_key").notNull(),
+    present: integer("present", { mode: "boolean" }).notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({
+      columns: [table.date, table.mealType, table.dinerKey],
+    }),
+  })
+);
+
 export const recipesRelations = relations(recipes, ({ many }) => ({
   ingredients: many(recipeIngredients),
   preferences: many(recipePreferences),
