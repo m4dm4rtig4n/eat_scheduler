@@ -1,3 +1,9 @@
+## [1.17.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.16.0...v1.17.0) (2026-05-11)
+
+### Features
+
+* add meal slot overrides functionality ([ed93f09](https://github.com/m4dm4rtig4n/eat_scheduler/commit/ed93f09e3c2a949e910bfe11bc109135012c9ffd))
+
 ## [1.16.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.15.1...v1.16.0) (2026-05-10)
 
 ### Features
