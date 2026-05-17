@@ -1,3 +1,9 @@
+## [1.18.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.17.0...v1.18.0) (2026-05-17)
+
+### Features
+
+* ajouter des fonctionnalités de synchronisation et d'authentification dans le planificateur de repas ([2f322ce](https://github.com/m4dm4rtig4n/eat_scheduler/commit/2f322ce90d53b55e93328666541c3651907e2cbc))
+
 ## [1.17.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.16.0...v1.17.0) (2026-05-11)
 
 ### Features
