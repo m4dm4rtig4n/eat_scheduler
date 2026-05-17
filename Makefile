@@ -2,7 +2,8 @@
 .PHONY: help install dev build start lint clean \
         db-generate db-migrate db-studio db-push db-reset \
         docker-build docker-up docker-down docker-logs \
-        helm-template helm-lint helm-install helm-upgrade helm-uninstall
+        helm-template helm-lint helm-install helm-upgrade helm-uninstall \
+        sync-dry sync
 
 # Variables
 APP_NAME       := eat-scheduler
@@ -11,6 +12,18 @@ HELM_CHART     := helm/eat-scheduler
 HELM_VALUES    := $(HELM_CHART)/example/values.yaml
 HELM_RELEASE   := eat
 HELM_NAMESPACE := eat-scheduler
+
+# Sync (cf. scripts/sync-to-prod.ts).
+# Charge .env si présent, précédence : env shell > .env > défaut Makefile.
+# Pour que l'env shell gagne sur les variables inclues, on cible PROD_BASE
+# spécifiquement : si le shell le définit déjà, on garde sa valeur ; sinon on
+# lit le .env ; sinon on tombe sur le défaut.
+ENV_FILE       ?= .env
+ifneq (,$(wildcard $(ENV_FILE)))
+include $(ENV_FILE)
+endif
+PROD_BASE      := $(if $(shell printenv PROD_BASE),$(shell printenv PROD_BASE),$(or $(PROD_BASE),https://eat.valent1.fr))
+export PROD_BASE
 
 # Outils via mise (assure les bonnes versions)
 PNPM := mise exec -- pnpm
@@ -90,3 +103,24 @@ helm-upgrade: ## Met à jour le release Helm
 
 helm-uninstall: ## Supprime le release Helm
 	$(HELM) uninstall $(HELM_RELEASE) --namespace $(HELM_NAMESPACE)
+
+##@ Sync (local -> distant)
+
+sync-dry: ## Liste les recettes locales absentes du distant (PROD_BASE=$(PROD_BASE))
+	PROD_BASE="$(PROD_BASE)" $(PNPM) tsx scripts/sync-to-prod.ts --dry
+
+sync: ## Affiche un dry-run, demande confirmation, puis pousse vers le distant (PROD_BASE=$(PROD_BASE))
+	@PROD_BASE="$(PROD_BASE)" $(PNPM) tsx scripts/sync-to-prod.ts --dry | tee /tmp/eat-sync-dry.out; \
+	if grep -q "Rien à faire" /tmp/eat-sync-dry.out; then \
+		rm -f /tmp/eat-sync-dry.out; \
+		exit 0; \
+	fi; \
+	rm -f /tmp/eat-sync-dry.out; \
+	printf "\nConfirmer le push vers $(PROD_BASE) ? [y/N] "; \
+	read ans < /dev/tty; \
+	case "$$ans" in \
+		[yY]|[yY][eE][sS]|[oO]|[oO][uU][iI]) \
+			PROD_BASE="$(PROD_BASE)" $(PNPM) tsx scripts/sync-to-prod.ts ;; \
+		*) \
+			echo "Annulé." ;; \
+	esac

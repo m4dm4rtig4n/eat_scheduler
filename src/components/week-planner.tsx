@@ -1235,29 +1235,40 @@ export function WeekPlanner({
                       )}
                       <header
                         className={cn(
-                          "flex items-center gap-2 px-3 py-2 border-b border-border/40 bg-card/40 backdrop-blur-sm"
+                          "flex flex-col gap-1.5 px-3 py-2 border-b border-border/40 bg-card/40 backdrop-blur-sm",
+                          "lg:flex-col",
+                          // Mobile/tablette : tout sur une ligne (largeur suffisante)
+                          "max-lg:flex-row max-lg:items-center max-lg:gap-2"
                         )}
                       >
-                        <div
-                          className={cn(
-                            "flex items-center justify-center size-7 rounded-full ring-1 bg-card",
-                            meta.ring
+                        <div className="flex items-center gap-2 max-lg:flex-1">
+                          <div
+                            className={cn(
+                              "flex items-center justify-center size-7 rounded-full ring-1 bg-card shrink-0",
+                              meta.ring
+                            )}
+                          >
+                            <SlotIcon
+                              className={cn("size-3.5", meta.iconColor)}
+                              strokeWidth={2.4}
+                            />
+                          </div>
+                          <span
+                            id={`slot-${dateISO}-${slot}`}
+                            className={cn(
+                              "text-[11px] font-bold uppercase tracking-[0.18em]",
+                              meta.iconColor
+                            )}
+                          >
+                            {meta.label}
+                          </span>
+                          {slotMeals.length > 0 && (
+                            <span className="ml-auto lg:ml-0 text-[10px] font-semibold text-muted-foreground tabular-nums">
+                              {slotMeals.length} plat
+                              {slotMeals.length > 1 ? "s" : ""}
+                            </span>
                           )}
-                        >
-                          <SlotIcon
-                            className={cn("size-3.5", meta.iconColor)}
-                            strokeWidth={2.4}
-                          />
                         </div>
-                        <span
-                          id={`slot-${dateISO}-${slot}`}
-                          className={cn(
-                            "text-[11px] font-bold uppercase tracking-[0.18em]",
-                            meta.iconColor
-                          )}
-                        >
-                          {meta.label}
-                        </span>
                         <SlotPresenceToggles
                           date={dateISO}
                           mealType={slot}
@@ -1269,12 +1280,6 @@ export function WeekPlanner({
                             toggleSlotPresence(dateISO, slot, d)
                           }
                         />
-                        {slotMeals.length > 0 && (
-                          <span className="ml-1 text-[10px] font-semibold text-muted-foreground tabular-nums">
-                            {slotMeals.length} plat
-                            {slotMeals.length > 1 ? "s" : ""}
-                          </span>
-                        )}
                       </header>
 
                       <div className="p-2 sm:p-3 lg:p-2 lg:flex-1 flex flex-col">
@@ -1616,7 +1621,7 @@ function SlotPresenceToggles({
   const candidates = activeDiners(dinersConfig);
   if (candidates.length === 0) return null;
   return (
-    <div className="flex-1 flex items-center justify-center gap-1">
+    <div className="max-lg:flex-1 flex items-center justify-center gap-1 flex-wrap">
       {candidates.map((dCfg) => {
         const d = dCfg.key;
         const defaultPresent = isDinerAvailable(dCfg, dayOfWeek, mealType);

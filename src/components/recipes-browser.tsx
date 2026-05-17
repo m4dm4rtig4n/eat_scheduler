@@ -29,7 +29,7 @@ import {
   type Preference,
 } from "@/lib/diners";
 import { useDiners } from "@/components/diners-provider";
-import { SEASON_EMOJI, SEASON_LABELS, SEASON_COLORS } from "@/lib/seasons";
+import { SEASON_EMOJI, SEASON_LABELS } from "@/lib/seasons";
 import { DAY_LABELS_SHORT, type DayOfWeek } from "@/lib/days";
 import { cn } from "@/lib/utils";
 import type { RecipeWithDetails } from "@/lib/db/recipes";
@@ -85,6 +85,25 @@ function getRestrictionBadge(
   return null;
 }
 
+/**
+ * Détermine le contenu affiché dans l'overlay de description au hover (desktop).
+ * Renvoie `null` pour ne pas afficher d'overlay du tout.
+ *
+ * TODO (toi) : décider ce qu'on montre quand `recipe.description` est vide.
+ * Options possibles (mais d'autres sont valides) :
+ *   - ne rien afficher (return null) → l'overlay disparaît sur les recettes sans desc
+ *   - afficher la liste des ingrédients (recipe.ingredients.map(i => i.name).join(", "))
+ *   - afficher un message générique ("Pas de description pour cette recette")
+ *   - composer un résumé (ex: "{n} ingrédients · {totalTime} min")
+ *
+ * 5-10 lignes max. Cette fonction shape l'expérience hover du desktop.
+ */
+function getOverlayContent(recipe: RecipeWithDetails): string | null {
+  if (recipe.description) return recipe.description;
+  // TODO: implémente ici le fallback de ton choix
+  return null;
+}
+
 export function RecipesBrowser({ recipes }: { recipes: RecipeWithDetails[] }) {
   const [filters, setFilters] = useState(emptyRecipeFilters);
 
@@ -129,7 +148,10 @@ export function RecipesBrowser({ recipes }: { recipes: RecipeWithDetails[] }) {
       ) : (
         <ul className="space-y-3 md:space-y-0 md:grid md:grid-cols-2 md:gap-3 lg:grid-cols-3 xl:grid-cols-4">
           {filtered.map((recipe) => (
-            <li key={recipe.id}>
+            <li
+              key={recipe.id}
+              className="relative hover:z-30 focus-within:z-30"
+            >
               <RecipeCard recipe={recipe} />
             </li>
           ))}
@@ -140,6 +162,44 @@ export function RecipesBrowser({ recipes }: { recipes: RecipeWithDetails[] }) {
 }
 
 function RecipeCard({ recipe }: { recipe: RecipeWithDetails }) {
+  const overlayContent = getOverlayContent(recipe);
+
+  return (
+    <Link
+      href={`/recipes/${recipe.id}/edit`}
+      className="group relative block"
+    >
+      {/* Carte de base, toujours visible */}
+      <div className="bg-card border border-border rounded-[var(--radius-lg)] p-4 shadow-soft hover:shadow-lift hover:border-border-strong active:translate-y-px transition-all">
+        <RecipeCardBody recipe={recipe} clampTitle />
+      </div>
+
+      {/* Overlay desktop : plus grand, déborde vers le bas, inclut la description */}
+      {overlayContent && (
+        <div
+          className={cn(
+            "hidden md:block pointer-events-none absolute -left-3 -right-3 -top-3 z-30",
+            "bg-card border border-border-strong rounded-[var(--radius-lg)] p-5 shadow-lift",
+            "opacity-0 invisible group-hover:opacity-100 group-hover:visible",
+            "transition-all duration-150"
+          )}
+        >
+          <RecipeCardBody recipe={recipe} extra={overlayContent} />
+        </div>
+      )}
+    </Link>
+  );
+}
+
+function RecipeCardBody({
+  recipe,
+  clampTitle = false,
+  extra,
+}: {
+  recipe: RecipeWithDetails;
+  clampTitle?: boolean;
+  extra?: string;
+}) {
   const dinersConfig = useDiners();
   const dinerKeys = activeDinerKeys(dinersConfig);
   const prefByDiner = new Map<Diner, Preference>(
@@ -149,39 +209,35 @@ function RecipeCard({ recipe }: { recipe: RecipeWithDetails }) {
   const restrictionBadge = getRestrictionBadge(recipe);
 
   return (
-    <Link
-      href={`/recipes/${recipe.id}/edit`}
-      className="group block bg-card border border-border rounded-[var(--radius-lg)] p-4 shadow-soft hover:shadow-lift hover:border-border-strong active:translate-y-px transition-all"
-    >
+    <>
       <div className="flex items-start gap-3 mb-3">
         <RecipeThumbnail recipe={recipe} />
         <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-3 mb-2">
-            <h2 className="font-bold text-base flex-1 leading-snug group-hover:text-primary transition-colors">
-              {recipe.name}
-            </h2>
-            <span
-              className={cn(
-                "inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-medium shrink-0",
-                SEASON_COLORS[recipe.season]
-              )}
-              title={SEASON_LABELS[recipe.season]}
-            >
-              <span>{SEASON_EMOJI[recipe.season]}</span>
-              <span className="hidden sm:inline">{SEASON_LABELS[recipe.season]}</span>
-            </span>
-          </div>
+          <h2
+            className={cn(
+              "font-bold text-base leading-snug transition-colors mb-2 md:min-h-[2lh]",
+              clampTitle && "md:line-clamp-2"
+            )}
+          >
+            {recipe.name}
+          </h2>
 
-          {recipe.description && (
-            <p className="text-sm text-muted-foreground line-clamp-2 mb-2">
+          {recipe.description && !extra && (
+            <p className="text-sm text-muted-foreground line-clamp-2 mb-2 md:hidden">
               {recipe.description}
             </p>
           )}
 
           <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-            <span className="inline-flex items-center gap-1">
+            <span
+              className="inline-flex items-center gap-1"
+              title={`${recipe.servings} personnes · ${SEASON_LABELS[recipe.season]}`}
+            >
               <Users className="size-3.5" />
-              {recipe.servings} pers.
+              {recipe.servings}
+              <span className="ml-0.5 leading-none">
+                {SEASON_EMOJI[recipe.season]}
+              </span>
             </span>
             {totalTime > 0 && (
               <span className="inline-flex items-center gap-1">
@@ -209,6 +265,12 @@ function RecipeCard({ recipe }: { recipe: RecipeWithDetails }) {
           </div>
         </div>
       </div>
+
+      {extra && (
+        <p className="text-sm text-foreground/80 mb-3 line-clamp-[10]">
+          {extra}
+        </p>
+      )}
 
       <div className="flex items-center justify-between gap-2 pt-3 border-t border-border">
         <div className="flex items-center gap-2">
@@ -249,20 +311,24 @@ function RecipeCard({ recipe }: { recipe: RecipeWithDetails }) {
           ))}
         </div>
       </div>
-    </Link>
+    </>
   );
 }
 
 function RecipeThumbnail({ recipe }: { recipe: RecipeWithDetails }) {
-  if (recipe.imageUrl) {
+  const [errored, setErrored] = useState(false);
+  const showImage = recipe.imageUrl && !errored;
+
+  if (showImage) {
     return (
       <div className="relative size-16 sm:size-20 shrink-0 rounded-md overflow-hidden bg-muted ring-1 ring-border">
         <Image
-          src={recipe.imageUrl}
+          src={recipe.imageUrl!}
           alt={recipe.name}
           fill
           sizes="80px"
           className="object-cover"
+          onError={() => setErrored(true)}
         />
       </div>
     );
