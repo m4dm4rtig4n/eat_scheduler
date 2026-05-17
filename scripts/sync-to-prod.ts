@@ -108,6 +108,7 @@ type Recipe = {
   ingredients: Array<{ name: string; quantity: string; position: number }>;
   preferences: Array<{ diner: string; preference: string }>;
   allowedSlots?: Array<{ dayOfWeek: number; mealType: string }>;
+  excludedSlots?: Array<{ dayOfWeek: number; mealType: string }>;
 };
 
 function toPayload(r: Recipe) {
@@ -129,7 +130,12 @@ function toPayload(r: Recipe) {
     })),
     preferences: r.preferences,
     allowedSlots: r.allowedSlots ?? [],
+    excludedSlots: r.excludedSlots ?? [],
   };
+}
+
+function normalizeName(name: string): string {
+  return name.toLowerCase().trim();
 }
 
 async function main() {
@@ -144,24 +150,65 @@ async function main() {
   if (!prodRes.ok) throw new Error(`Prod GET ${prodRes.status}`);
   const prod = (await prodRes.json()) as Recipe[];
 
-  const prodNames = new Set(prod.map((r) => r.name.toLowerCase().trim()));
-  const toPush = local.filter(
-    (r) => !prodNames.has(r.name.toLowerCase().trim())
-  );
+  const prodByName = new Map(prod.map((r) => [normalizeName(r.name), r]));
+  const toPush = local.filter((r) => !prodByName.has(normalizeName(r.name)));
+
+  // Phase 2 : recettes présentes des deux côtés où prep/cookTime diffèrent.
+  // On part du payload prod (pour ne pas écraser ingredients/preferences édités
+  // côté prod) et on override uniquement prepTime/cookTime depuis le local.
+  type TimeUpdate = {
+    prodId: number;
+    name: string;
+    prodRecipe: Recipe;
+    localPrep: number | null;
+    localCook: number | null;
+    prevPrep: number | null;
+    prevCook: number | null;
+  };
+  const toUpdateTimes: TimeUpdate[] = [];
+  for (const localRecipe of local) {
+    const prodRecipe = prodByName.get(normalizeName(localRecipe.name));
+    if (!prodRecipe) continue;
+    const prepDiff = localRecipe.prepTime !== prodRecipe.prepTime;
+    const cookDiff = localRecipe.cookTime !== prodRecipe.cookTime;
+    if (!prepDiff && !cookDiff) continue;
+    toUpdateTimes.push({
+      prodId: prodRecipe.id,
+      name: prodRecipe.name,
+      prodRecipe,
+      localPrep: localRecipe.prepTime,
+      localCook: localRecipe.cookTime,
+      prevPrep: prodRecipe.prepTime,
+      prevCook: prodRecipe.cookTime,
+    });
+  }
 
   console.log(`Local: ${local.length} recettes`);
   console.log(`Prod : ${prod.length} recettes`);
-  console.log(`À pousser: ${toPush.length}`);
+  console.log(`À pousser (nouvelles): ${toPush.length}`);
+  console.log(`À mettre à jour (temps): ${toUpdateTimes.length}`);
   console.log("");
 
-  if (toPush.length === 0) {
+  if (toPush.length === 0 && toUpdateTimes.length === 0) {
     console.log("Rien à faire.");
     return;
   }
 
   if (DRY_RUN) {
-    console.log("Mode dry-run, liste des recettes locales absentes du distant :");
-    for (const r of toPush) console.log(`  - ${r.name}`);
+    if (toPush.length > 0) {
+      console.log("Recettes locales absentes du distant :");
+      for (const r of toPush) console.log(`  - ${r.name}`);
+      console.log("");
+    }
+    if (toUpdateTimes.length > 0) {
+      console.log("Recettes à mettre à jour (prep/cook diff) :");
+      console.log("  id   | prep prod → local | cook prod → local | nom");
+      for (const u of toUpdateTimes) {
+        const prep = `${String(u.prevPrep ?? "null").padStart(4)} → ${String(u.localPrep ?? "null").padEnd(4)}`;
+        const cook = `${String(u.prevCook ?? "null").padStart(4)} → ${String(u.localCook ?? "null").padEnd(4)}`;
+        console.log(`  ${String(u.prodId).padStart(4)} | ${prep}        | ${cook}        | ${u.name}`);
+      }
+    }
     return;
   }
 
@@ -191,8 +238,47 @@ async function main() {
     await sleep(SLEEP_MS);
   }
 
+  let updOk = 0;
+  let updFail = 0;
+  if (toUpdateTimes.length > 0) {
+    console.log("");
+    console.log(`Mise à jour des temps (${toUpdateTimes.length} recettes)...`);
+  }
+  for (const u of toUpdateTimes) {
+    try {
+      // Payload = recette prod existante, mais avec prep/cookTime du local.
+      // Préserve ingredients, preferences, allowed/excludedSlots côté prod.
+      const payload = {
+        ...toPayload(u.prodRecipe),
+        prepTime: u.localPrep,
+        cookTime: u.localCook,
+      };
+      const res = await fetch(`${PROD}/api/recipes/${u.prodId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...prodHeaders },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        console.log(`  ERR ${u.name}: ${res.status} ${body.slice(0, 200)}`);
+        updFail++;
+      } else {
+        console.log(
+          `  OK  ${u.name} (prep ${u.prevPrep ?? "null"}→${u.localPrep ?? "null"}, cook ${u.prevCook ?? "null"}→${u.localCook ?? "null"})`
+        );
+        updOk++;
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.log(`  ERR ${u.name}: ${msg}`);
+      updFail++;
+    }
+    await sleep(SLEEP_MS);
+  }
+
   console.log("");
-  console.log(`Terminé: ${ok} succès, ${fail} échecs`);
+  console.log(`Créations: ${ok} succès, ${fail} échecs`);
+  console.log(`Updates  : ${updOk} succès, ${updFail} échecs`);
 }
 
 main()

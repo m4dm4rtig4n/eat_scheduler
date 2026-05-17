@@ -115,8 +115,16 @@ sync: ## Affiche un dry-run, demande confirmation, puis pousse vers le distant (
 		rm -f /tmp/eat-sync-dry.out; \
 		exit 0; \
 	fi; \
+	creations=$$(grep -E "À pousser \(nouvelles\): " /tmp/eat-sync-dry.out | awk '{print $$NF}'); \
+	updates=$$(grep -E "À mettre à jour \(temps\): " /tmp/eat-sync-dry.out | awk '{print $$NF}'); \
 	rm -f /tmp/eat-sync-dry.out; \
-	printf "\nConfirmer le push vers $(PROD_BASE) ? [y/N] "; \
+	printf "\n"; \
+	printf "================================================================\n"; \
+	printf "  CONFIRMATION REQUISE  ->  cible : $(PROD_BASE)\n"; \
+	printf "  Cr\303\251ations : %s recette(s)\n" "$${creations:-?}"; \
+	printf "  Updates   : %s recette(s) (prep/cook time)\n" "$${updates:-?}"; \
+	printf "================================================================\n"; \
+	printf "\n>>> Confirmer le push vers $(PROD_BASE) ? [y/N]\n>>> "; \
 	read ans < /dev/tty; \
 	case "$$ans" in \
 		[yY]|[yY][eE][sS]|[oO]|[oO][uU][iI]) \

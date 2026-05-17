@@ -228,16 +228,13 @@ function RecipeCardBody({
             </p>
           )}
 
-          <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+          <div className="flex items-center gap-x-3 gap-y-1 text-xs text-muted-foreground flex-wrap md:min-h-[2lh]">
             <span
               className="inline-flex items-center gap-1"
-              title={`${recipe.servings} personnes · ${SEASON_LABELS[recipe.season]}`}
+              title={`${recipe.servings} personnes`}
             >
               <Users className="size-3.5" />
               {recipe.servings}
-              <span className="ml-0.5 leading-none">
-                {SEASON_EMOJI[recipe.season]}
-              </span>
             </span>
             {totalTime > 0 && (
               <span className="inline-flex items-center gap-1">
@@ -262,6 +259,13 @@ function RecipeCardBody({
                 {restrictionBadge.text}
               </span>
             )}
+            <span
+              className="ml-auto leading-none text-base"
+              title={SEASON_LABELS[recipe.season]}
+              aria-label={SEASON_LABELS[recipe.season]}
+            >
+              {SEASON_EMOJI[recipe.season]}
+            </span>
           </div>
         </div>
       </div>
