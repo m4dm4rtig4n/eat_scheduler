@@ -1,3 +1,9 @@
+## [1.19.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.18.0...v1.19.0) (2026-05-17)
+
+### Features
+
+* améliorer la confirmation de synchronisation et ajouter des mises à jour de temps pour les recettes ([07a1280](https://github.com/m4dm4rtig4n/eat_scheduler/commit/07a1280806703ca891dcea19dcbff2fdb495589f))
+
 ## [1.18.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.17.0...v1.18.0) (2026-05-17)
 
 ### Features
