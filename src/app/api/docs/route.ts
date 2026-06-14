@@ -22,7 +22,9 @@ const HTML = `<!DOCTYPE html>
     crossorigin="anonymous"
   />
   <style>
-    body { margin: 0; background: #0d0d0d; }
+    /* Swagger UI est conçu pour un fond clair : on garde son thème natif,
+       sinon le texte (gris foncé) devient illisible sur fond sombre. */
+    body { margin: 0; background: #fafafa; }
     .topbar { display: none; }
   </style>
 </head>
