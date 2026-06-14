@@ -1,3 +1,9 @@
+## [1.20.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.19.0...v1.20.0) (2026-06-14)
+
+### Features
+
+* **api:** exposer une API documentée (OpenAPI/Swagger) avec auth par token ([#1](https://github.com/m4dm4rtig4n/eat_scheduler/issues/1)) ([f51c18c](https://github.com/m4dm4rtig4n/eat_scheduler/commit/f51c18c154eceaa1b3bb074d1bdfacada06959a5))
+
 ## [1.19.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.18.0...v1.19.0) (2026-05-17)
 
 ### Features

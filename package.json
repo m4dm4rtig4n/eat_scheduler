@@ -1,6 +1,6 @@
 {
   "name": "eat_scheduler",
-  "version": "1.19.0",
+  "version": "1.20.0",
   "private": true,
   "packageManager": "pnpm@10.33.4",
   "scripts": {
