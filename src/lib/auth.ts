@@ -57,3 +57,12 @@ export function checkPassword(submitted: string): boolean {
   if (a.length !== b.length) return false;
   return timingSafeEqual(a, b);
 }
+
+// Header utilisé par les clients API (Claude, scripts) en alternative au cookie
+// de session. On accepte le mot de passe applicatif directement comme token.
+export const API_TOKEN_HEADER = "x-api-token";
+
+export function verifyApiToken(token: string | undefined): boolean {
+  if (!token) return false;
+  return checkPassword(token);
+}

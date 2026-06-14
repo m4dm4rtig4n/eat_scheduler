@@ -1,12 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export function LoginForm() {
-  const router = useRouter();
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -24,8 +22,11 @@ export function LoginForm() {
       const data = await response.json().catch(() => ({}));
 
       if (response.ok) {
-        router.replace("/");
-        router.refresh();
+        // Rechargement complet du document (plutôt que router.replace + refresh).
+        // Le cookie de session posé par /api/auth/login est alors garanti
+        // présent sur la requête de navigation, donc le proxy voit la session
+        // et ne redirige pas vers /login. Évite la page blanche au login.
+        window.location.assign("/");
         return;
       }
 

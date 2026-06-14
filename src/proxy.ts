@@ -1,8 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SESSION_COOKIE_NAME, isAuthEnabled, verifySessionToken } from "@/lib/auth";
+import {
+  API_TOKEN_HEADER,
+  SESSION_COOKIE_NAME,
+  isAuthEnabled,
+  verifyApiToken,
+  verifySessionToken,
+} from "@/lib/auth";
 
 export function proxy(request: NextRequest) {
   if (!isAuthEnabled()) return NextResponse.next();
+
+  // Clients API (Claude, scripts) : header X-API-Token = mot de passe applicatif.
+  if (verifyApiToken(request.headers.get(API_TOKEN_HEADER) ?? undefined)) {
+    return NextResponse.next();
+  }
 
   const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
   if (verifySessionToken(token)) return NextResponse.next();
@@ -20,6 +31,6 @@ export function proxy(request: NextRequest) {
 export const config = {
   // Tout sauf : /login, /api/auth/*, fichiers statiques, manifest, sw, icons.
   matcher: [
-    "/((?!login|api/auth|api/health|_next/static|_next/image|manifest.json|sw.js|favicon.ico|icons|.*\\.(?:png|jpg|jpeg|svg|webp|ico)$).*)",
+    "/((?!login|api/auth|api/health|api/openapi.json|api/docs|_next/static|_next/image|manifest.json|sw.js|favicon.ico|icons|.*\\.(?:png|jpg|jpeg|svg|webp|ico)$).*)",
   ],
 };
