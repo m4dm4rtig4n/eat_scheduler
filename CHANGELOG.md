@@ -1,3 +1,9 @@
+## [1.20.1](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.20.0...v1.20.1) (2026-06-14)
+
+### Bug Fixes
+
+* **docs:** fond clair pour Swagger UI (texte illisible sur fond sombre) ([01432fe](https://github.com/m4dm4rtig4n/eat_scheduler/commit/01432feb5896097c6e765136038dcb8ea5e317bd)), closes [#0d0d0d](https://github.com/m4dm4rtig4n/eat_scheduler/issues/0d0d0d)
+
 ## [1.20.0](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.19.0...v1.20.0) (2026-06-14)
 
 ### Features
