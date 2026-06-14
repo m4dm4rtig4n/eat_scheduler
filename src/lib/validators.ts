@@ -1,3 +1,6 @@
+// DOIT être en premier : patche z.* avec .openapi() avant que les schemas
+// ci-dessous ne soient construits (sinon .openapi() est absente au build).
+import "@/lib/zod-init";
 import { z } from "zod";
 import { COLOR_KEYS } from "@/lib/diners";
 import { SEASONS } from "@/lib/seasons";
