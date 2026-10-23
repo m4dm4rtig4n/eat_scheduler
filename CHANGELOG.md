@@ -1,3 +1,9 @@
+## [1.20.2](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.20.1...v1.20.2) (2026-10-23)
+
+### Bug Fixes
+
+* **docker:** MED-72 / épingler node 24.22.1 contre Node2Shell ([8277d9a](https://github.com/m4dm4rtig4n/eat_scheduler/commit/8277d9afb80c395178b45f11aacad791882d4950))
+
 ## [1.20.1](https://github.com/m4dm4rtig4n/eat_scheduler/compare/v1.20.0...v1.20.1) (2026-06-14)
 
 ### Bug Fixes
