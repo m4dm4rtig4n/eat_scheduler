@@ -1,0 +1,11 @@
+# Image de base Node epinglee en version exacte (MED-72, Node2Shell) : sans ce fichier,
+# plus aucun correctif Node n'arrive seul au rebuild. Dependabot propose chaque nouvelle
+# version de node:X.Y.Z-alpine en PR. Le tag vient de l'ARG NODE_VERSION du Dockerfile :
+# si Dependabot ne le resout pas, remplacer l'ARG par un FROM litteral. La version de
+# setup-node dans les workflows reste a aligner a la main.
+version: 2
+updates:
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
